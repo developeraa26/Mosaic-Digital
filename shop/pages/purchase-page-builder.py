@@ -87,7 +87,7 @@ T = {
     "order_fields": ["Full name", "Company name", "Work email", "Mobile number", "Trade licence number", "Referral code (optional)"],
     "order_ref": "Did a Ledger Plus customer refer you? Enter their code so they receive their reward. Your price stays AED 1,999.",
     "order_sum": [("E-Invoicing Starter package", "AED 1,999"), ("VAT (5%)", "Included"), ("Total today", "AED 1,999")],
-    "order_after": ["You pay by card on the secure page of [payment gateway].", "We never see or store your card details.",
+    "order_after": ["You pay by card on the secure payment page of Geidea.", "We never see or store your card details.",
                     "Your login and tax invoice arrive by email [right after payment: to confirm]."],
     "help": "Need help? Call or WhatsApp",
     "faq_h2": "Common questions",

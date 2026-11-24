@@ -24,7 +24,7 @@ Status on 24 November 2026: built and saved on the site, **not launched**. The s
 | Cart / Checkout / My Account | pages 886 / 887 / 888 | heading, help line and trust notes added; checkout button reads "Pay securely" |
 | Store styling | Appearance > Customize > Additional CSS | live, scoped to store pages only (source: `store-css/store.css`) |
 | Checkout fields | WooCommerce settings | Company and Phone are **required** |
-| Tax and currency | WooCommerce settings | 5% VAT, prices entered incl. VAT, UAE only, currency position "Left with space" |
+| Tax and currency | WooCommerce settings | 5% VAT, prices entered incl. VAT, UAE only, prices shown as "AED 1,999.00" |
 | Order emails | WooCommerce settings | brand colours; new-order alerts go to the sales team |
 
 The copy follows the client plan. Two kinds of change were made, both to be approved by the client:
@@ -37,7 +37,7 @@ The copy follows the client plan. Two kinds of change were made, both to be appr
 
 ## Still to do on the site (needs the client or the site owner)
 
-1. **Install the Ledger Plus Shop plugin.** Use one route only, not both:
+1. **Ledger Plus Shop plugin:** installed and active (24 Nov 2026). Use one route only, not both:
    - **Plugin zip (recommended):** Plugins > Add New > Upload Plugin > `plugin/ledgerplus-shop.zip` > Activate.
    - **WPCode:** install the free WPCode plugin. The snippet `plugin/ledgerplus-shop-wpcode.php` is then added for you, switched off, and the site owner switches it on.
 
@@ -51,8 +51,8 @@ The copy follows the client plan. Two kinds of change were made, both to be appr
    - the thank-you page content.
 
    Details and a full test plan are in `plugin/PLUGIN-README.md`.
-2. **Payment gateway:** connect Stripe UAE (official WooCommerce Stripe extension) or WooPayments; Mamo is the backup. Then replace `[payment gateway]` in the checkout notes.
-3. **Email delivery:** add SMTP or a transactional mail service (for example Zoho ZeptoMail) with SPF and DKIM, so order emails do not land in spam.
+2. **Payment gateway:** Geidea Online Payments is installed and enabled; it supports the block checkout. Stripe is installed but switched off. Before launch, run a test payment in Geidea test mode, confirm the order moves to "Processing", and check the referral code appears on the thank-you page and in the email.
+3. **Email delivery:** WP Mail SMTP is installed. Send a test email (WP Mail SMTP > Tools > Email Test) and make sure SPF and DKIM for ledgerplus.ae pass, so order emails do not land in spam.
 4. **Policy pages:** finish and publish the Terms of Sale and refund policy, then set them in WooCommerce > Settings > Advanced > Terms and conditions.
 5. **Test on staging, then launch:**
    - place a test order on staging;

@@ -1,0 +1,194 @@
+{
+ "banner": "E-invoicing becomes mandatory for UAE businesses with revenue under AED 50 million on 1 July 2027. Get ready today.",
+ "pill": "E-Invoicing Starter package",
+ "h1": "Get your business ready for e-invoicing for AED 1,999",
+ "hero_p": "Software, setup and data migration in one package. Buy online in about 2 minutes. Our team does the rest.",
+ "buy": "Buy now for AED 1,999",
+ "demo": "Try the free demo",
+ "points": [
+  "No integration costs",
+  "Unlimited users",
+  "Free onboarding"
+ ],
+ "offers": [
+  [
+   "One price. Everything included.",
+   "AED 1,999 covers the software, 1,000 e-invoices, data migration and onboarding. No hidden costs.",
+   "tag"
+  ],
+  [
+   "Refer one company. Get AED 999 back.",
+   "When a company you refer buys Ledger Plus, you get AED 999 cash back.",
+   "gift"
+  ],
+  [
+   "We set it up for you.",
+   "Our team moves your data and shows you how to use Ledger Plus. You do not need an IT team.",
+   "tool"
+  ]
+ ],
+ "get_h2": "Everything in your AED 1,999 package",
+ "get": [
+  [
+   "1,000 e-invoices",
+   "Send up to 1,000 e-invoices to your customers.",
+   "invoice"
+  ],
+  [
+   "Ledger Plus software",
+   "Create invoices and keep your accounts in one place.",
+   "app"
+  ],
+  [
+   "Data migration",
+   "We move your existing data into Ledger Plus for you.",
+   "move"
+  ],
+  [
+   "No integration costs",
+   "You pay nothing extra to get connected.",
+   "plug"
+  ],
+  [
+   "Unlimited users",
+   "Add your whole team and your accountant at no extra cost.",
+   "users"
+  ],
+  [
+   "Free onboarding",
+   "Our team walks you through the software, step by step.",
+   "cap"
+  ]
+ ],
+ "why_h2": "The e-invoicing deadline is close",
+ "why": [
+  [
+   "1 July 2027",
+   "From 1 July 2027, UAE businesses with annual revenue under AED 50 million must issue and receive business invoices as e-invoices. Larger businesses start on 1 January 2027."
+  ],
+  [
+   "31 March 2027",
+   "These businesses must appoint an e-invoicing provider accredited by the Ministry of Finance by 31 March 2027."
+  ],
+  [
+   "PDF & Word",
+   "For invoices to other businesses, a PDF or Word file will no longer count. The invoice must be a structured e-invoice sent through an accredited provider."
+  ],
+  [
+   "AED 5,000 / month",
+   "Businesses that miss the deadline face fines of AED 5,000 a month (up to AED 50,000 in any 12 months), plus AED 100 for each invoice not issued as an e-invoice (up to AED 5,000 a month)."
+  ]
+ ],
+ "why_close": "Do not wait for the deadline. Buy today and we start your setup.",
+ "why_source": "Source: UAE Ministry of Finance decisions on the e-invoicing system, checked 24 November 2026.",
+ "how_h2": "Start in three simple steps",
+ "how": [
+  [
+   "Fill in your details",
+   "It takes about 2 minutes."
+  ],
+  [
+   "Pay securely by card",
+   "You get your login and tax invoice by email [straight away: to confirm]."
+  ],
+  [
+   "We set you up",
+   "We move your data and book your free onboarding. Then you start sending e-invoices."
+  ]
+ ],
+ "ref_h2": "Refer one company. Get AED 999 cash back.",
+ "ref_steps": [
+  "Buy Ledger Plus for AED 1,999. We email you your personal referral code.",
+  "Share your code with a customer, a supplier or a friend who runs a business.",
+  "They buy Ledger Plus for AED 1,999 and enter your code in the order form.",
+  "You get AED 999 cash back."
+ ],
+ "ref_example": "You pay AED 1,999. One company you refer buys. You get AED 999 back. Your software has cost you AED 1,000.",
+ "ref_condition": "The reward is given only after the company you refer has paid for its licence.",
+ "ref_small": [
+  "Cash back is paid by [payment method] within [X days] of the referred company’s payment.",
+  "[Reward for each referral, or one time only: to confirm]"
+ ],
+ "ref_line": "Were you referred by a Ledger Plus customer? Enter their code in the order form below.",
+ "order_h2": "Complete your order",
+ "order_p": "It takes about 2 minutes.",
+ "order_fields": [
+  "Full name",
+  "Company name",
+  "Work email",
+  "Mobile number",
+  "Trade licence number",
+  "Referral code (optional)"
+ ],
+ "order_ref": "Did a Ledger Plus customer refer you? Enter their code so they receive their reward. Your price stays AED 1,999.",
+ "order_sum": [
+  [
+   "E-Invoicing Starter package",
+   "AED 1,999"
+  ],
+  [
+   "VAT (5%)",
+   "Included"
+  ],
+  [
+   "Total today",
+   "AED 1,999"
+  ]
+ ],
+ "order_after": [
+  "You pay by card on the secure payment page of Geidea.",
+  "We never see or store your card details.",
+  "Your login and tax invoice arrive by email [right after payment: to confirm]."
+ ],
+ "help": "Need help? Call or WhatsApp",
+ "faq_h2": "Common questions",
+ "faq": [
+  [
+   "What do I get for AED 1,999?",
+   "The Ledger Plus software, 1,000 e-invoices, data migration, unlimited users and free onboarding."
+  ],
+  [
+   "Is it a one-time payment?",
+   "[One-time or yearly: to confirm]"
+  ],
+  [
+   "Is VAT included?",
+   "Yes. AED 1,999 includes 5% VAT. There is nothing extra to pay at checkout."
+  ],
+  [
+   "How fast can I start?",
+   "Your account is created [right after payment: to confirm]. Our team then contacts you [within X working days] to move your data and book onboarding."
+  ],
+  [
+   "Do I need an IT team or an accountant?",
+   "No. We set everything up with you. You can also give your accountant access for free."
+  ],
+  [
+   "Can I try it before I buy?",
+   "Yes. Use the free demo with sample data. No payment is needed."
+  ],
+  [
+   "How does the referral reward work?",
+   "After you buy, you get a referral code. When a company buys Ledger Plus with your code, you get AED 999 cash back."
+  ],
+  [
+   "When do I get my cash back?",
+   "After the company you referred has paid. We pay it by [payment method] within [X days]."
+  ],
+  [
+   "What if I need more than 1,000 e-invoices?",
+   "[To confirm]"
+  ],
+  [
+   "I also need bookkeeping and tax filing. What should I choose?",
+   "Look at our <a href=\"https://ledgerplus.ae/pricing/\">Compliance plans</a>. They include a dedicated accountant and start at [AED 5,999 a year: to confirm]."
+  ],
+  [
+   "Can I get a refund?",
+   "[Refund policy: to confirm]"
+  ]
+ ],
+ "final_h2": "Get e-invoicing ready today",
+ "final_p": "AED 1,999. Refer one company that buys and get AED 999 cash back.",
+ "final_contact": "Questions? Call or WhatsApp"
+}

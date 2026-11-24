@@ -35,6 +35,20 @@ function check( $name, $cond, $detail = '' ) {
 function section( $t ) {
 	echo "\n== $t ==\n";
 }
+// F11 switch for the tests: true/false forces lp_shop_settings email_branding, null = plugin default.
+function lp_branding( $on ) {
+	remove_all_filters( 'lp_shop_settings' );
+	if ( null !== $on ) {
+		add_filter(
+			'lp_shop_settings',
+			function ( $s ) use ( $on ) {
+				$s['email_branding'] = $on;
+				return $s;
+			}
+		);
+	}
+	LP_Shop::reset_settings();
+}
 
 /* ---------------- Boot ---------------- */
 section( 'Boot' );
@@ -497,6 +511,8 @@ check( 'other emails untouched', '' === ob_get_clean() );
 
 $email_a     = new stdClass();
 $email_a->id = 'new_order';
+// The v1.0.0 admin markup (F11 email branding off); the branded card is tested in the F11 section.
+lp_branding( false );
 $GLOBALS['lp_test']['orders'][101]['meta'][ LP_Shop::FIELD_META_PREFIX . LP_Shop::FIELD_TRN ] = '100123456789003';
 ob_start();
 do_action( 'woocommerce_email_order_meta', wc_get_order( 101 ), true, false, $email_a );
@@ -514,6 +530,7 @@ ob_start();
 do_action( 'woocommerce_email_order_meta', $h, true, false, $email_a );
 $ad_h = ob_get_clean();
 check( 'admin email (on-hold): code read from coupon, status "checked when payment is confirmed"', false !== strpos( $ad_h, $code_r . ' (referrer order #100, status: checked when payment is confirmed)' ) && false !== strpos( $ad_h, 'Created when payment is confirmed' ) );
+lp_branding( null );
 
 $GLOBALS['lp_test']['logged_in'] = true;
 $GLOBALS['lp_test']['user_id']   = 55;
@@ -592,6 +609,7 @@ check( 'order without product 890 ignored', null === LP_Shop::void_referral( 105
 
 /* ---------------- F3f follow-up: admin notice for on-hold orders ---------------- */
 section( 'F3f follow-up: admin notice when an on-hold order is paid' );
+lp_branding( false ); // v1.0.0 body markup; the branded body is tested in the F11 section.
 $mailer = WC()->mailer();
 $oh     = WC_Order::make( 210, 'hold2@buyer.ae', 'on-hold', array( 890 ), array(), array( $TL => 'OH-1' ) );
 $GLOBALS['lp_test']['orders'][210]['status'] = 'processing';
@@ -614,6 +632,7 @@ $mailer->new_order->enabled = true;
 WC_Order::make( 212, 'hold4@buyer.ae', 'processing', array( 891 ) );
 do_action( 'woocommerce_order_status_changed', 212, 'on-hold', 'processing', wc_get_order( 212 ) );
 check( 'not sent for orders without product 890', 1 === count( $mailer->sent ) );
+lp_branding( null );
 
 /* ---------------- F3a duplicate reconciliation ---------------- */
 section( 'F3a duplicate coupon reconciliation' );
@@ -718,6 +737,302 @@ $GLOBALS['lp_test']['store_api']  = false;
 $GLOBALS['lp_test']['queried_id'] = 891;
 check( 'other product not redirected', null === lp_try_redirect() );
 $GLOBALS['lp_test']['is_singular'] = false;
+
+/* ---------------- F11 ---------------- */
+section( 'F11 email branding' );
+// FeaturesUtil stand-in (src/Utilities/FeaturesUtil.php) so the email_improvements check can be switched.
+if ( ! class_exists( '\Automattic\WooCommerce\Utilities\FeaturesUtil' ) ) {
+	eval( 'namespace Automattic\WooCommerce\Utilities; class FeaturesUtil { public static $on = array( "email_improvements" => true ); public static function feature_is_enabled( $id ) { return ! empty( self::$on[ $id ] ); } }' ); // phpcs:ignore
+}
+lp_branding( null );
+$s11 = LP_Shop::settings();
+check( 'setting email_branding defaults to true', true === $s11['email_branding'] );
+check( 'woocommerce_email_styles filter added once (priority 20)', 1 === lp_test_hook_count( 'woocommerce_email_styles' ) && isset( $GLOBALS['lp_test']['filters']['woocommerce_email_styles'][20] ) );
+check( 'woocommerce_email_order_items_args filter added once', 1 === lp_test_hook_count( 'woocommerce_email_order_items_args' ) );
+LP_Shop::init();
+check( 'init() again does not add the email filters twice', 1 === lp_test_hook_count( 'woocommerce_email_styles' ) && 1 === lp_test_hook_count( 'woocommerce_email_order_items_args' ) );
+
+$wc_css   = "body { background-color: #f6f8fd; }\n";
+$em_obj   = new stdClass();
+$em_obj->id = 'customer_processing_order';
+$css1     = apply_filters( 'woocommerce_email_styles', $wc_css, $em_obj );
+check( 'CSS appended after WooCommerce\'s CSS', 0 === strpos( $css1, $wc_css ) && strlen( $css1 ) > strlen( $wc_css ) + 1000 );
+check( 'CSS carries the marker once', 1 === substr_count( $css1, LP_Shop::EMAIL_CSS_MARKER ) );
+$css2 = apply_filters( 'woocommerce_email_styles', $css1, $em_obj );
+check( 'CSS appended once even when the filter runs twice', $css1 === $css2 && 1 === substr_count( $css2, '#inner_wrapper {' ) );
+$plain_css = LP_Shop::email_css();
+check( 'CSS: braces balanced', substr_count( $plain_css, '{' ) === substr_count( $plain_css, '}' ) );
+check( 'CSS: one mobile media query', 1 === substr_count( $plain_css, '@media screen and (max-width: 600px)' ) );
+check( 'CSS: no :is() / :has() / CSS variables / flex / grid', ! preg_match( '/:is\(|:has\(|var\(|--[a-z]|display:\s*(flex|grid|inline-flex)|\bgrid-|\bflex-/i', $plain_css ) );
+check( 'CSS: no web font, no @import, no url()', false === stripos( $plain_css, 'DM Sans' ) && false === stripos( $plain_css, '@import' ) && false === stripos( $plain_css, 'url(' ) );
+\Automattic\WooCommerce\Utilities\FeaturesUtil::$on['email_improvements'] = false;
+check( 'email improvements off -> CSS unchanged (legacy templates keep their look)', $wc_css === apply_filters( 'woocommerce_email_styles', $wc_css, $em_obj ) );
+\Automattic\WooCommerce\Utilities\FeaturesUtil::$on['email_improvements'] = true;
+$em_block = new stdClass();
+$em_block->id = 'customer_processing_order';
+$em_block->block_email_editor_enabled = true;
+check( 'block editor email -> CSS unchanged', $wc_css === apply_filters( 'woocommerce_email_styles', $wc_css, $em_block ) );
+check( 'non-string CSS passed through', null === LP_Shop::filter_email_styles( null, $em_obj ) );
+add_filter( 'lp_shop_email_css', function ( $c ) { return $c . "\n.lp-extra { color: #000; }"; } );
+check( 'lp_shop_email_css filter can extend the CSS', false !== strpos( apply_filters( 'woocommerce_email_styles', $wc_css, $em_obj ), '.lp-extra' ) );
+remove_all_filters( 'lp_shop_email_css' );
+lp_branding( false );
+check( 'setting off -> CSS unchanged', $wc_css === apply_filters( 'woocommerce_email_styles', $wc_css, $em_obj ) );
+lp_branding( null );
+
+// Order item thumbnails.
+$img_item = new class() {
+	public $img = 0;
+	public function get_product() {
+		$img = $this->img;
+		return new class( $img ) {
+			private $i;
+			public function __construct( $i ) {
+				$this->i = $i;
+			}
+			public function get_image_id() {
+				return $this->i;
+			}
+		};
+	}
+};
+$args = array( 'show_image' => true, 'items' => array( $img_item ) );
+check( 'no product image -> no thumbnail column', false === apply_filters( 'woocommerce_email_order_items_args', $args )['show_image'] );
+$img_item->img = 77;
+check( 'a product image -> thumbnails kept', true === apply_filters( 'woocommerce_email_order_items_args', $args )['show_image'] );
+$img_item->img = 0;
+lp_branding( false );
+check( 'setting off -> thumbnail args untouched', true === apply_filters( 'woocommerce_email_order_items_args', $args )['show_image'] );
+lp_branding( null );
+
+// Customer emails.
+$em_p     = new stdClass();
+$em_p->id = 'customer_processing_order';
+ob_start();
+do_action( 'woocommerce_email_order_meta', wc_get_order( 101 ), false, false, $em_p );
+$p_html = ob_get_clean();
+check( 'processing (HTML): "What happens next" card with the 3 steps', false !== strpos( $p_html, 'lp-email-next' ) && false !== strpos( $p_html, 'Our team contacts you to create your Ledger Plus login.' ) && false !== strpos( $p_html, 'We move your data into Ledger Plus.' ) && false !== strpos( $p_html, 'We book your free onboarding.' ) );
+check( 'processing (HTML): help line with tel: and WhatsApp links', false !== strpos( $p_html, 'href="tel:+971503420832"' ) && false !== strpos( $p_html, 'href="https://wa.me/971503420832"' ) );
+check( 'processing (HTML): referral card with the code on its own, then the reward text', false !== strpos( $p_html, 'lp-email-referral' ) && false !== strpos( $p_html, 'data-lp-code="' . $code_b . '"' ) && false !== strpos( $p_html, '>' . $code_b . '</td>' ) && false !== strpos( $p_html, 'Share it with another business. When they buy Ledger Plus with your code, you get AED 999 cash back after their payment is confirmed.' ) );
+check( 'processing (HTML): the default reward-terms placeholder is not shown to customers', false === strpos( $p_html, 'Reward terms' ) && false === strpos( $p_html, '[' ) );
+check( 'processing (HTML): steps before the code; v1.0.0 box gone', strpos( $p_html, 'lp-email-next' ) < strpos( $p_html, 'lp-email-referral' ) && false === strpos( $p_html, 'lp-shop-email-referral' ) );
+check( 'processing (HTML): tables with role=presentation, no <div>/<section>/<h2>', false !== strpos( $p_html, 'role="presentation"' ) && false === strpos( $p_html, '<div' ) && false === strpos( $p_html, '<section' ) && false === strpos( $p_html, '<h2' ) );
+check( 'processing (HTML): font set on the cells (Outlook)', substr_count( $p_html, 'font-family:' ) >= 8 );
+ob_start();
+do_action( 'woocommerce_email_order_meta', wc_get_order( 101 ), false, true, $em_p );
+$p_txt = ob_get_clean();
+check( 'processing (plain): steps then the referral sentence, no tags', false !== strpos( $p_txt, 'WHAT HAPPENS NEXT' ) && false !== strpos( $p_txt, '1. Our team contacts you' ) && false !== strpos( $p_txt, '3. We book your free onboarding.' ) && strpos( $p_txt, 'WHAT HAPPENS NEXT' ) < strpos( $p_txt, 'Your referral code: ' . $code_b . '.' ) && $p_txt === strip_tags( $p_txt ) );
+$em_p->id = 'customer_completed_order';
+ob_start();
+do_action( 'woocommerce_email_order_meta', wc_get_order( 101 ), false, false, $em_p );
+$c_html = ob_get_clean();
+check( 'completed (HTML): referral card, no steps', false !== strpos( $c_html, 'lp-email-referral' ) && false !== strpos( $c_html, $code_b ) && false === strpos( $c_html, 'lp-email-next' ) );
+ob_start();
+do_action( 'woocommerce_email_order_meta', wc_get_order( 101 ), false, true, $em_p );
+$c_txt = ob_get_clean();
+check( 'completed (plain): the referral sentence only, without the terms placeholder', "\n" . 'Your referral code: ' . $code_b . '. Share it with another business. When they buy Ledger Plus with your code, you get AED 999 cash back after their payment is confirmed.' . "\n\n" === $c_txt );
+// Processing order whose code is not there yet: steps only.
+$nc = WC_Order::make( 230, 'nocode@buyer.ae', 'processing', array( 890 ) );
+$em_p->id = 'customer_processing_order';
+ob_start();
+do_action( 'woocommerce_email_order_meta', $nc, false, false, $em_p );
+$nc_html = ob_get_clean();
+check( 'processing without a code yet: steps, no referral card', false !== strpos( $nc_html, 'lp-email-next' ) && false === strpos( $nc_html, 'lp-email-referral' ) );
+$em_p->id = 'customer_invoice';
+ob_start();
+do_action( 'woocommerce_email_order_meta', wc_get_order( 101 ), false, false, $em_p );
+check( 'other emails untouched', '' === ob_get_clean() );
+// Escaping of the settings texts.
+add_filter( 'lp_shop_settings', function ( $s ) { $s['reward_text'] = 'you get <b>AED 999</b> & more.'; return $s; } );
+LP_Shop::reset_settings();
+$esc = LP_Shop::email_referral_card_html( 'LP-AB"C<1' );
+check( 'card escapes the code and the reward text', false !== strpos( $esc, 'you get &lt;b&gt;AED 999&lt;/b&gt; &amp; more.' ) && false !== strpos( $esc, 'LP-AB&quot;C&lt;1' ) && false === strpos( $esc, '<b>AED' ) );
+lp_branding( null );
+
+// Admin card.
+$em_a2     = new stdClass();
+$em_a2->id = 'new_order';
+ob_start();
+do_action( 'woocommerce_email_order_meta', wc_get_order( 101 ), true, false, $em_a2 );
+$a_html = ob_get_clean();
+check( 'admin (HTML): checks card with label / value cells', false !== strpos( $a_html, 'lp-email-checks' ) && false !== strpos( $a_html, '>Trade licence</td>' ) && false !== strpos( $a_html, '>DED-998877</td>' ) && false !== strpos( $a_html, '>VAT TRN</td>' ) && false !== strpos( $a_html, '>100123456789003</td>' ) );
+check( 'admin (HTML): referral used + status, own code', false !== strpos( $a_html, '>' . $code_r . ' (referrer order #100, status: pending review)</td>' ) && false !== strpos( $a_html, '>' . $code_b . '</td>' ) && false === strpos( $a_html, '#b42318' ) );
+ob_start();
+do_action( 'woocommerce_email_order_meta', wc_get_order( 103 ), true, false, $em_a2 );
+$a_rep = ob_get_clean();
+check( 'admin (HTML): possible existing customer shown in red', false !== strpos( $a_rep, 'color:#b42318;">Yes, see order #100</td>' ) );
+ob_start();
+do_action( 'woocommerce_email_order_meta', wc_get_order( 103 ), true, true, $em_a2 );
+check( 'admin (plain): unchanged by F11', $ad_t === ob_get_clean() );
+
+// WooCommerce email preview: dummy order without product 890.
+$dummy = WC_Order::make( 231, 'dummy@example.com', 'processing', array( 12 ) );
+$em_p->id = 'customer_processing_order';
+ob_start();
+do_action( 'woocommerce_email_order_meta', $dummy, false, false, $em_p );
+check( 'order without product 890, not a preview -> nothing', '' === ob_get_clean() );
+add_filter( 'woocommerce_is_email_preview', function () { return true; } );
+ob_start();
+do_action( 'woocommerce_email_order_meta', $dummy, false, false, $em_p );
+$pv = ob_get_clean();
+check( 'email preview -> sample cards with ' . LP_Shop::SAMPLE_CODE, false !== strpos( $pv, 'lp-email-next' ) && false !== strpos( $pv, LP_Shop::SAMPLE_CODE ) );
+ob_start();
+do_action( 'woocommerce_email_order_meta', $dummy, true, false, $em_a2 );
+check( 'email preview (admin) -> checks card', false !== strpos( ob_get_clean(), 'lp-email-checks' ) );
+lp_branding( false );
+ob_start();
+do_action( 'woocommerce_email_order_meta', $dummy, false, false, $em_p );
+check( 'email preview with branding off -> nothing (v1.0.0)', '' === ob_get_clean() );
+lp_branding( null );
+remove_all_filters( 'woocommerce_is_email_preview' );
+
+// Branding off = the v1.0.0 markup, byte for byte.
+lp_branding( false );
+$em_p->id = 'customer_processing_order';
+ob_start();
+do_action( 'woocommerce_email_order_meta', wc_get_order( 101 ), false, false, $em_p );
+$off = ob_get_clean();
+check( 'setting off -> v1.0.0 referral box exactly', '<div class="lp-shop-email-referral" style="margin:0 0 24px;padding:16px 20px;border:1px solid #dde5f4;border-radius:12px;background:#eaf1fd;color:#030922;"><p style="margin:0;">' . LP_Shop::referral_sentence_html( $code_b ) . '</p></div>' === $off );
+ob_start();
+do_action( 'woocommerce_email_order_meta', wc_get_order( 101 ), false, true, $em_p );
+check( 'setting off -> no steps in plain text', false === strpos( ob_get_clean(), 'WHAT HAPPENS NEXT' ) );
+lp_branding( null );
+
+// "Payment confirmed" admin email with the branded card.
+$mailer11 = WC()->mailer();
+$sent0    = count( $mailer11->sent );
+$oh11     = WC_Order::make( 232, 'hold11@buyer.ae', 'on-hold', array( 890 ), array(), array( $TL => 'OH-11' ) );
+$GLOBALS['lp_test']['orders'][232]['status'] = 'processing';
+$oh11_obj = wc_get_order( 232 );
+do_action( 'woocommerce_order_status_processing', 232, $oh11_obj, array() );
+do_action( 'woocommerce_order_status_changed', 232, 'on-hold', 'processing', $oh11_obj );
+$msg11 = $mailer11->sent[ $sent0 ]['message'] ?? '';
+check( '"Payment confirmed" email uses the checks card', count( $mailer11->sent ) === $sent0 + 1 && false !== strpos( $msg11, 'lp-email-checks' ) && false !== strpos( $msg11, '>OH-11</td>' ) && false === strpos( $msg11, '<ul>' ) );
+
+// F11 review fixes.
+section( 'F11 review fixes' );
+lp_branding( null );
+// Reward terms: placeholders hidden in the branded emails only; real terms shown.
+check( 'v1.0.0 sentence (thank-you page, My Account) still carries the configured terms', false !== strpos( LP_Shop::referral_sentence_html( 'LP-X' ), '[Reward terms: to confirm]' ) );
+check( 'email_reward_terms(): default placeholder -> empty', '' === LP_Shop::email_reward_terms() );
+add_filter( 'lp_shop_settings', function ( $s ) { $s['reward_terms'] = ' [Terms v2] '; return $s; } );
+LP_Shop::reset_settings();
+check( 'email_reward_terms(): any text wholly in [brackets] -> empty', '' === LP_Shop::email_reward_terms() && false === strpos( LP_Shop::email_referral_card_html( 'LP-X' ), 'Terms v2' ) );
+lp_branding( null );
+add_filter( 'lp_shop_settings', function ( $s ) { $s['reward_terms'] = 'Terms & conditions: ledgerplus.ae/referral-terms'; return $s; } );
+LP_Shop::reset_settings();
+$rt_card = LP_Shop::email_referral_card_html( 'LP-X' );
+check( 'real terms -> shown (escaped) in the card', false !== strpos( $rt_card, '<span style="color:#5b6684;">Terms &amp; conditions: ledgerplus.ae/referral-terms</span>' ) );
+$em_rt     = new stdClass();
+$em_rt->id = 'customer_completed_order';
+ob_start();
+do_action( 'woocommerce_email_order_meta', wc_get_order( 101 ), false, true, $em_rt );
+check( 'real terms -> shown in the plain-text email', false !== strpos( ob_get_clean(), 'after their payment is confirmed. Terms &amp; conditions: ledgerplus.ae/referral-terms' ) );
+lp_branding( null );
+
+// Card markup: spacing as cell padding (not table margins), line breaks at row boundaries.
+$cards = LP_Shop::email_next_steps_html() . LP_Shop::email_referral_card_html( 'LP-HG4HG7' ) . LP_Shop::email_checks_card_html( wc_get_order( 103 ), LP_Shop::admin_summary_rows( wc_get_order( 103 ) ) );
+$longest = max( array_map( 'strlen', explode( "\n", $cards ) ) );
+check( 'cards: no line longer than 900 characters (RFC 5322 limit is 998)', $longest <= 900, "longest line $longest" );
+check( 'cards: no margin on any table', ! preg_match( '/<table[^>]*style="[^"]*margin/', $cards ) );
+check( 'cards: gap below each card is spacer-cell padding (16px after the steps, 24px after the code and checks)', 3 === substr_count( $cards, 'class="lp-email-gap"' ) && 1 === substr_count( $cards, '<td style="padding:0 0 16px;">' ) && 2 === substr_count( $cards, '<td style="padding:0 0 24px;">' ) );
+check( 'cards: table tags balanced', substr_count( $cards, '<table' ) === substr_count( $cards, '</table>' ) && substr_count( $cards, '<tr' ) === substr_count( $cards, '</tr>' ) && substr_count( $cards, '<td' ) === substr_count( $cards, '</td>' ) );
+check( 'cards: wp_kses_post keeps the markup', wp_kses_post( $cards ) === $cards );
+
+// CSS details.
+$css11 = LP_Shop::email_css();
+check( 'CSS: one divider below the totals (no border on the last totals row)', false !== strpos( $css11, '.order-totals-last th { border-bottom: 0;' ) );
+check( 'CSS: customer note without WooCommerce\'s darker bottom rule', false !== strpos( $css11, '.order-customer-note td { border-bottom: 0;' ) );
+check( 'CSS: billing phone link stays underlined', false !== strpos( $css11, '.address a { color: #0f5cd8; text-decoration: underline; }' ) );
+check( 'CSS: VAT line 14px in the body text colour', false !== strpos( $css11, '.includes_tax { color: #2c3651; font-size: 14px;' ) );
+check( 'CSS: logo alt text styled as a navy sans wordmark', false !== strpos( $css11, '#template_header_image img { color: #041950; font-family: ' . LP_Shop::EMAIL_FONT . '; font-size: 22px;' ) && false !== strpos( $css11, 'border-radius: 6px; color: #041950; }' ) );
+
+// woocommerce_mail_content: one CSS rule per line in the <style> element (Emogrifier writes one line).
+check( 'woocommerce_mail_content filter added once (priority 20)', 1 === lp_test_hook_count( 'woocommerce_mail_content' ) && isset( $GLOBALS['lp_test']['filters']['woocommerce_mail_content'][20] ) );
+$mail_in  = '<html><head><style type="text/css">@media screen and (max-width: 600px){#a{color: red !important;}.b{padding: 0 !important;}}</style></head><body><p style="color: #000;">x}y</p></body></html>';
+$mail_out = apply_filters( 'woocommerce_mail_content', $mail_in );
+check( 'mail content: a line break after each } inside <style>, nothing else changed', '<html><head><style type="text/css">@media screen and (max-width: 600px){#a{color: red !important;}' . "\n" . '.b{padding: 0 !important;}' . "\n" . '}' . "\n" . '</style></head><body><p style="color: #000;">x}y</p></body></html>' === $mail_out, $mail_out );
+check( 'mail content: running twice changes nothing more', $mail_out === apply_filters( 'woocommerce_mail_content', $mail_out ) );
+check( 'mail content: plain text untouched', 'Total: AED 1}999' === apply_filters( 'woocommerce_mail_content', 'Total: AED 1}999' ) );
+$pad      = str_repeat( 'x', 1000 );
+$long_in  = '<html><head><style>a{b:c}</style></head><body><br><h2 style="color: #041950;">Additional information</h2><ul class="additional-fields"><li><strong>Trade licence number</strong>: ' . $pad . '</li><li><strong>VAT TRN</strong>: 100</li></ul></body></html>';
+$long_out = apply_filters( 'woocommerce_mail_content', $long_in );
+check( 'mail content: a line over 998 characters is broken before block-level tags only', false !== strpos( $long_out, '<br>' . "\n" . '<h2 style="color: #041950;">Additional information</h2>' . "\n" . '<ul class="additional-fields">' . "\n" . '<li><strong>Trade licence number</strong>: ' ) && false !== strpos( $long_out, '</li>' . "\n" . '<li><strong>VAT TRN</strong>: 100</li></ul>' ) && str_replace( "\n", '', $long_out ) === str_replace( "\n", '', $long_in ) );
+$short_in = '<html><head><style>a{b:c}' . "\n" . '</style></head><body><br><h2>T</h2><ul><li>x</li></ul></body></html>';
+check( 'mail content: lines within the limit keep their markup', $short_in === apply_filters( 'woocommerce_mail_content', $short_in ) );
+lp_branding( false );
+check( 'mail content: setting off -> untouched (v1.0.0)', $mail_in === apply_filters( 'woocommerce_mail_content', $mail_in ) );
+lp_branding( null );
+\Automattic\WooCommerce\Utilities\FeaturesUtil::$on['email_improvements'] = false;
+check( 'mail content: new templates off -> untouched', $mail_in === apply_filters( 'woocommerce_mail_content', $mail_in ) );
+\Automattic\WooCommerce\Utilities\FeaturesUtil::$on['email_improvements'] = true;
+
+// Font: follows WooCommerce > Settings > Emails > Font family (templates/emails/email-styles.php:36, 68).
+check( 'font: no EmailFont class / no option -> Helvetica stack', LP_Shop::EMAIL_FONT === LP_Shop::email_font() );
+if ( ! class_exists( '\Automattic\WooCommerce\Internal\Email\EmailFont' ) ) {
+	eval( 'namespace Automattic\WooCommerce\Internal\Email; class EmailFont { public static $font = array( "Helvetica" => "\'Helvetica Neue\', Helvetica, Roboto, Arial, sans-serif", "Georgia" => "Georgia, Times, \'Times New Roman\', serif", "Bad" => "x; } body { color: red" ); }' ); // phpcs:ignore
+}
+if ( ! function_exists( 'get_transient' ) ) {
+	function get_transient( $k ) {
+		return $GLOBALS['lp_test']['transients'][ $k ] ?? false;
+	}
+}
+$GLOBALS['lp_test']['options']['woocommerce_email_font_family'] = 'Georgia';
+$georgia = "Georgia, Times, 'Times New Roman', serif";
+check( 'font: Georgia setting -> Georgia stack in the CSS and on the card cells', $georgia === LP_Shop::email_font() && false !== strpos( LP_Shop::email_css(), 'font-family: ' . $georgia . ';' ) && false !== strpos( LP_Shop::email_referral_card_html( 'LP-X' ), 'font-family:Georgia, Times' ) );
+\Automattic\WooCommerce\Utilities\FeaturesUtil::$on['email_improvements'] = false;
+check( 'font: new templates off -> Helvetica stack (as WooCommerce does)', LP_Shop::EMAIL_FONT === LP_Shop::email_font() );
+\Automattic\WooCommerce\Utilities\FeaturesUtil::$on['email_improvements'] = true;
+$GLOBALS['lp_test']['options']['woocommerce_email_font_family'] = 'Bad';
+check( 'font: a stack with unsafe characters -> Helvetica stack', LP_Shop::EMAIL_FONT === LP_Shop::email_font() );
+$GLOBALS['lp_test']['options']['woocommerce_email_font_family'] = 'Comic';
+check( 'font: unknown font name -> Helvetica stack', LP_Shop::EMAIL_FONT === LP_Shop::email_font() );
+$GLOBALS['lp_test']['transients']['woocommerce_email_font_family'] = 'Georgia';
+check( 'font: preview transient ignored outside the preview', LP_Shop::EMAIL_FONT === LP_Shop::email_font() );
+add_filter( 'woocommerce_is_email_preview', function () { return true; } );
+check( 'font: preview transient used in the email preview', $georgia === LP_Shop::email_font() );
+remove_all_filters( 'woocommerce_is_email_preview' );
+unset( $GLOBALS['lp_test']['options']['woocommerce_email_font_family'], $GLOBALS['lp_test']['transients'] );
+
+// Admin notice on WooCommerce > Settings > Emails when the new email templates are off.
+check( 'admin_notices hook added once (with WooCommerce)', 1 === lp_test_hook_count( 'admin_notices' ) );
+$caps0                      = $GLOBALS['lp_test']['caps'];
+$GLOBALS['lp_test']['caps'] = array( 'manage_woocommerce' );
+$_GET                       = array( 'page' => 'wc-settings', 'tab' => 'email' );
+\Automattic\WooCommerce\Utilities\FeaturesUtil::$on['email_improvements'] = false;
+ob_start();
+do_action( 'admin_notices' );
+$nt = ob_get_clean();
+check( 'notice: shown on Settings > Emails when the new templates are off', false !== strpos( $nt, 'notice-warning' ) && false !== strpos( $nt, 'Try our new email templates!' ) );
+$_GET['section'] = 'wc_email_new_order';
+ob_start();
+do_action( 'admin_notices' );
+check( 'notice: not on one email\'s own settings', '' === ob_get_clean() );
+$_GET = array( 'page' => 'wc-settings', 'tab' => 'email', 'try-new-templates' => '' );
+ob_start();
+do_action( 'admin_notices' );
+check( 'notice: not while WooCommerce previews the new templates', '' === ob_get_clean() );
+$_GET = array( 'page' => 'wc-settings', 'tab' => 'general' );
+ob_start();
+do_action( 'admin_notices' );
+check( 'notice: not on other screens', '' === ob_get_clean() );
+$_GET = array( 'page' => 'wc-settings', 'tab' => 'email' );
+lp_branding( false );
+ob_start();
+do_action( 'admin_notices' );
+check( 'notice: not when email branding is off', '' === ob_get_clean() );
+lp_branding( null );
+$GLOBALS['lp_test']['caps'] = array();
+ob_start();
+do_action( 'admin_notices' );
+check( 'notice: not for users without manage_woocommerce', '' === ob_get_clean() );
+$GLOBALS['lp_test']['caps'] = array( 'manage_woocommerce' );
+\Automattic\WooCommerce\Utilities\FeaturesUtil::$on['email_improvements'] = true;
+ob_start();
+do_action( 'admin_notices' );
+check( 'notice: not when the new templates are on', '' === ob_get_clean() );
+$_GET                       = array();
+$GLOBALS['lp_test']['caps'] = $caps0;
 
 /* ---------------- F8 ---------------- */
 section( 'F8 settings filter' );

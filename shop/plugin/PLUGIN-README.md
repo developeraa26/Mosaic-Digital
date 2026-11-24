@@ -1,4 +1,6 @@
-# Ledger Plus Shop (v1.0.0)
+# Ledger Plus Shop (v1.1.0)
+
+**New in 1.1.0: F11 email branding** (Ledger Plus look for the WooCommerce emails). Everything else works as in 1.0.0. Design notes, before/after screenshots and the email settings to apply: `../email/EMAIL-DESIGN.md`. 1.1.0 is a drop-in replacement: same folder and file (`ledgerplus-shop/ledgerplus-shop.php`), so upload it over 1.0.0.
 
 These are the WooCommerce add-ons for selling the **E-Invoicing Starter Package** (product 890, AED 1,999 including 5% VAT) on ledgerplus.ae.
 
@@ -21,7 +23,7 @@ Requirements: WordPress 6.5+, PHP 8.1+ (the site runs 8.4), WooCommerce 9.0+ (th
 | F1 | Prices show **AED** instead of the Arabic dirham sign. | Everywhere WooCommerce prints the currency symbol, including the cart and checkout blocks (they read it through the Store API). |
 | F2 | Two checkout fields: **Trade licence number** (required) and **VAT TRN (if VAT registered)** (optional). The trade licence is saved in upper case with single spaces and must be 3-40 characters of A-Z, 0-9, space, `-`, `/` or `.`. The TRN is saved as digits only and must be empty or exactly 15 digits. Input without any digit (for example "N/A") is saved as empty, which means "not VAT registered". | Block checkout (Contact information section), admin order screen (Billing column), order emails ("Additional information"), thank-you page, My Account → Account details. |
 | F3a | When an order containing product 890 is **paid** (processing or completed), the buyer gets one personal referral code, `LP-XXXXXX`. It is an AED 0 WooCommerce coupon: fixed cart, no usage limit, product 890 only, not individual use. The code is saved on the order with an order note. An order never keeps a second code. | Marketing → Coupons; order notes. |
-| F3b | The buyer's code is shown with this wording: "Your referral code: LP-XXXXXX. Share it with another business. When they buy Ledger Plus with your code, you get AED 999 cash back after their payment is confirmed. [Reward terms: to confirm]" | Thank-you page, the customer "Processing order" and "Completed order" emails (HTML and plain text), My Account dashboard. |
+| F3b | The buyer's code is shown with this wording: "Your referral code: LP-XXXXXX. Share it with another business. When they buy Ledger Plus with your code, you get AED 999 cash back after their payment is confirmed. [Reward terms: to confirm]" | Thank-you page, the customer "Processing order" and "Completed order" emails (HTML and plain text), My Account dashboard. With F11 on, the emails leave out a placeholder for the terms (the default, or any text wholly in [brackets]); the thank-you page and My Account still show it, as in 1.0.0. |
 | F3c | When a paid order used a referral code, the plugin saves which code it was and which order it came from. The status is `pending_review`, or `ineligible_self` when the buyer's billing email or trade licence matches the referrer's. Both orders get a note. If that order is later **cancelled or refunded**, the status becomes `void_cancelled` or `void_refunded` and both orders get a note; a partial refund only adds notes. If the referrer's own order is cancelled or refunded, it gets a note listing the referred orders still pending review, and those orders get a note too. **Nothing is paid or promised automatically.** | Order notes and order meta. |
 | F3d | A buyer cannot apply their **own** code: the plugin compares the referrer's email and trade licence with the shopper's (account email, billing email, trade licence). It also blocks a second referral code on the same order, and codes whose referrer order is no longer paid (refunded or cancelled). Common errors use referral wording: a mistyped code gives "Referral code "LP-XXXXXX" was not found. Please check it and try again." and a code used without product 890 gives "Referral code "LP-XXXXXX" only works with the E-Invoicing Starter Package." | Error under the referral code field. |
 | F3e | **Possible existing customer:** when another paid order has the same billing email or trade licence, the order gets the note "Possible existing customer: order #X" and the meta `_lp_possible_repeat=yes`. | Order notes. |
@@ -31,6 +33,8 @@ Requirements: WordPress 6.5+, PHP 8.1+ (the site runs 8.4), WooCommerce 9.0+ (th
 | F5 | Opening `/checkout/?add-to-cart=890` when product 890 is already in the cart shows **no** "You cannot add another…" error. The checkout simply opens. | Buy buttons on the sales page. |
 | F6 | The product 890 page redirects (302) to sales page 892, but **only once page 892 is published**. | `/product/...` URL of product 890. |
 | F7 | A "What happens next" block on the thank-you page, with three steps and the help line "Need help? Call or WhatsApp +971 50 342 0832.". It makes no time promises. What shows depends on the order status: **paid**: the steps and the buyer's code; **pending or on-hold**: the steps introduced by "Once your payment is confirmed:" and "Your referral code will appear here and in your confirmation email once your payment is confirmed."; **failed, cancelled or refunded**: only the help line. | Thank-you page. |
+
+| F11 | **Email branding** (setting `email_branding`, default on). WooCommerce keeps its own email templates. The plugin (1) adds Ledger Plus CSS through `woocommerce_email_styles`, which WooCommerce inlines with Emogrifier like its own CSS: blue top edge, navy headings, a cleaner order table, a navy footer, mobile sizes; (2) prints its own cards from `woocommerce_email_order_meta`: "What happens next" (Processing order email), "Your referral code" with the code large (Processing and Completed order emails), "Ledger Plus checks" as a label/value table (New order and "Payment confirmed" admin emails); (3) hides WooCommerce's grey placeholder thumbnail when no ordered product has an image (`woocommerce_email_order_items_args`); (4) keeps every line of the sent message within 998 characters (`woocommerce_mail_content`: line breaks in the `<style>` element and before block-level tags in over-long lines; no visual change); (5) on WooCommerce → Settings → Emails, warns when WooCommerce's new email templates are off, because the CSS needs them (`admin_notices`). Brand colours are fixed by the plugin; the font follows WooCommerce's Font family setting. In the WooCommerce email preview (Settings → Emails), whose dummy order has no Ledger Plus product, the cards show the sample code `LP-SAMPLE`. Plain-text emails get the steps as text. The CSS is only added when WooCommerce's "email improvements" templates are on, and never to block-editor emails. With `email_branding` off, the emails are byte for byte those of 1.0.0. | All WooCommerce emails (CSS); Processing, Completed, New order and "Payment confirmed" emails (cards). |
 
 It does **not** do the following: Zoho CRM sync, reward payouts, or anything else that moves money (F10). There is a marked `TODO - Phase 2` section at the end of the class.
 
@@ -63,6 +67,7 @@ add_filter( 'lp_shop_settings', function ( $s ) {
     $s['require_paid_referrer'] = true;   // F3d: refuse codes whose referrer order is refunded/cancelled
     $s['admin_paid_notice']     = true;   // F3f: "Payment confirmed" admin email for on-hold orders
     $s['lock_wait_seconds']     = 5;      // F3a: how long a payment hook waits for another request (0-10)
+    $s['email_branding']        = true;   // F11: Ledger Plus email design (false = the 1.0.0 emails)
     $s['buy_now_product_ids']   = array( 890, 891 ); // F5 applies to these (only if "Sold individually")
     return $s;
 } );
@@ -70,8 +75,9 @@ add_filter( 'lp_shop_settings', function ( $s ) {
 
 The other keys are `product_id`, `sales_page_id`, `addon_product_id`, `phone_display`, `phone_tel`, `whatsapp_url`, `support_email` and `price_text` (`AED 1,999`). In reward texts, write apostrophes as ’ and not `'`: WooCommerce plain-text emails drop `&#039;`.
 
-There are two extra filters:
+There are three extra filters:
 - `lp_shop_block_coupon_labels`: the msgid → new text map for the block cart and checkout (F4).
+- `lp_shop_email_css`: the F11 email CSS string (append rules to adjust the design).
 - `lp_shop_settings`: described above.
 
 ---
@@ -112,7 +118,7 @@ Do these in this order. Steps 1-9 can be done while the store is still in "comin
 8. **Appearance → Customize → Additional CSS**: add `store.css` after any CSS already there (saving replaces the whole Additional CSS). It also styles the plugin's thank-you and My Account classes (store.css section 15). The Customizer checker (CSSLint 1.0.4) reports `:is()`, `:has()` and `@container` as errors although the CSS is valid; tick "Update anyway" to save, or save it with `wp_update_custom_css_post()` from WP-CLI.
 9. **WooCommerce → Settings → Emails**: keep **New order** enabled with the right recipient (F3f and the "Payment confirmed" notice use it), and keep **Processing order** and **Completed order** enabled (they carry the buyer's code). Install an SMTP plugin before launch so these emails arrive.
 10. **Payment gateway**: install the WooCommerce Stripe extension or WooPayments, test it in test mode, then replace "[payment gateway]" in the checkout foot block with its name, and check that the gateway does not replace the "Pay securely" label.
-11. **Reward terms**: when agreed, set `LP_SHOP_REWARD_TERMS` in `wp-config.php` (or the `lp_shop_settings` filter) to replace "[Reward terms: to confirm]".
+11. **Reward terms**: when agreed, set `LP_SHOP_REWARD_TERMS` in `wp-config.php` (or the `lp_shop_settings` filter) to replace "[Reward terms: to confirm]". Until then the 1.1.0 emails leave the placeholder out, but the thank-you page and My Account still show it.
 12. **Coupons**: keep coupons enabled (they are). Do not create other coupons: the cart and checkout call every coupon a "referral code". Do not edit the `LP-` coupons by hand.
 13. **Publish page 892** when ready. The product page redirect starts by itself. A shop manager can still see the product page at `…/product/…/?lp_stay=1`.
 14. Run the staging test plan (section 7) with a test gateway, then switch the store from "coming soon" to live (**WooCommerce → Settings → Site visibility → Live**).
@@ -169,7 +175,7 @@ The plugin prints plain, semantic markup with these classes and adds no front-en
 .lp-shop.lp-shop-account > section.lp-shop-referral.lp-shop-referral--account   My Account dashboard
 .lp-shop-admin-box                        admin order screen (under billing address)
 ```
-The emails use inline styles (brand colours #dde5f4, #eaf1fd, #f6f8fd, #030922, #041950), because email clients ignore stylesheets.
+The emails use inline styles (brand colours #dde5f4, #eaf1fd, #f6f8fd, #030922, #041950), because email clients ignore stylesheets. With F11 on, each email card sits in a full-width spacer table `table.lp-email-gap` (the gap below the card is cell padding) and is a one-cell table: `table.lp-email-card.lp-email-next` / `.lp-email-referral` (code in `td.lp-email-code[data-lp-code]`) / `.lp-email-checks`, each with `td.lp-email-card-cell`; the step numbers are `td.lp-email-num`.
 
 ---
 
@@ -200,9 +206,9 @@ Everything is written through `WC_Order` and `WC_Coupon` CRUD and the options AP
 cd test
 bash run-all.sh
 ```
-This runs the following (331 checks, all passing on PHP 8.3.6 CLI):
+This runs the following (373 checks, all passing on PHP 8.3.6 CLI):
 - `php -l` on both files. The snippet is linted a second time with `<?php` added, because that is what `eval()` sees.
-- `run-tests.php`: 247 checks against stubs. They cover code generation (alphabet, length, spread, collisions, the uniqueness retry loop), trade licence and TRN sanitize/validate (including what the Store API really passes), self-referral matching, the buy-now logic (pure function and real filter inside `wp_loaded`), the simulated paid-order flow (one code per order, stale objects, lost meta, busy, stale and timestamp-less locks, waiting for a busy lock, referral status, notes on both orders, repeat by email and by trade licence), coupon validity and error messages (including the referral wording for codes 105 and 109), the success message, the thank-you page for every status, the email and My Account output, cancelled, refunded, partly refunded and re-paid orders on both sides of a referral, the "Payment confirmed" admin email, duplicate coupon reconciliation, the classic and Store API wording, the product redirect rules (including `?lp_stay[]=1`), the settings filter, and zero PHP notices or deprecations.
+- `run-tests.php`: 328 checks against stubs (81 of them for F11: filters added once, CSS appended once and only with email improvements on and outside block-editor emails, no `:is()`/`:has()`/variables/flex/grid in the CSS, the cards in HTML and plain text, escaping, the preview sample, the thumbnail rule, setting off = the 1.0.0 markup exactly, the "Payment confirmed" body, reward-terms placeholders left out of the emails, card spacing as cell padding, no card line over 900 characters, the message line-length filter, the font setting, the single divider with a customer note, the underlined address link, the logo alt text, and the Settings → Emails notice). They cover code generation (alphabet, length, spread, collisions, the uniqueness retry loop), trade licence and TRN sanitize/validate (including what the Store API really passes), self-referral matching, the buy-now logic (pure function and real filter inside `wp_loaded`), the simulated paid-order flow (one code per order, stale objects, lost meta, busy, stale and timestamp-less locks, waiting for a busy lock, referral status, notes on both orders, repeat by email and by trade licence), coupon validity and error messages (including the referral wording for codes 105 and 109), the success message, the thank-you page for every status, the email and My Account output, cancelled, refunded, partly refunded and re-paid orders on both sides of a referral, the "Payment confirmed" admin email, duplicate coupon reconciliation, the classic and Store API wording, the product redirect rules (including `?lp_stay[]=1`), the settings filter, and zero PHP notices or deprecations.
 - `test-inline.js` (Node): runs the real inline script against a fake `wp.hooks` and checks every label.
 - `run-variants.php`: the snippet evaluated twice, plugin + snippet in both orders, WooCommerce missing, WooCommerce 8.9, no `ABSPATH`, and the Blocks field API path.
 - `run-race.php`: two simulated requests on the same paid order, interleaved with PHP Fibers over a model of WordPress 7.1.5's option functions (`stubs-options-wp715.php`): both past the existence check in the same second and in different seconds, a stale lock cleared by both, the worst case where both end up holding the lock, and webhook versus thank-you page. Each must end with one live coupon, the same code in every email and page, and no lock left behind.

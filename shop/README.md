@@ -9,7 +9,7 @@ Status on 24 November 2026: built and saved on the site, **not launched**. The s
 1. **Purchase page:** the visitor arrives on `/e-invoicing-starter/` (Elementor page 892). Every "Buy now for AED 1,999" button opens `/checkout/?add-to-cart=890`.
 2. **Pricing page:** on `/pricing/` the Starter box gets an "Add to cart" button that opens `/cart/?add-to-cart=890`. This is prepared but not applied until launch; see `launch/pricing_patch_launch.json`.
 3. **Cart:** shows the package with VAT included and a "Have a referral code?" box.
-4. **Checkout:** the buyer enters name, company, work email, mobile, billing address, trade licence number, an optional VAT TRN and an optional referral code. Payment then runs through the gateway; none is connected yet.
+4. **Checkout:** the buyer enters name, company, work email, mobile, billing address, trade licence number, an optional VAT TRN and an optional referral code. Payment then runs through Geidea.
 5. **After payment:** the thank-you page shows "What happens next" and the buyer's own referral code (`LP-XXXXXX`). The same code is in the order email. The team gets the new-order email with the trade licence, TRN and referral checks.
 6. **Account set-up:** the team creates the Ledger Plus account by hand. This step is unchanged from today.
 
@@ -25,7 +25,7 @@ Status on 24 November 2026: built and saved on the site, **not launched**. The s
 | Store styling | Appearance > Customize > Additional CSS | live, scoped to store pages only (source: `store-css/store.css`) |
 | Checkout fields | WooCommerce settings | Company and Phone are **required** |
 | Tax and currency | WooCommerce settings | 5% VAT, prices entered incl. VAT, UAE only, prices shown as "AED 1,999.00" |
-| Order emails | WooCommerce settings | brand colours; new-order alerts go to the sales team |
+| Order emails | WooCommerce settings + plugin 1.1 | logo header, branded layout, referral-code card, contact footer; replies go to info@ledgerplus.ae; new-order alerts go to the sales team (see `email/EMAIL-DESIGN.md`) |
 
 The copy follows the client plan. Two kinds of change were made, both to be approved by the client:
 
@@ -37,8 +37,8 @@ The copy follows the client plan. Two kinds of change were made, both to be appr
 
 ## Still to do on the site (needs the client or the site owner)
 
-1. **Ledger Plus Shop plugin:** installed and active (24 Nov 2026). Use one route only, not both:
-   - **Plugin zip (recommended):** Plugins > Add New > Upload Plugin > `plugin/ledgerplus-shop.zip` > Activate.
+1. **Ledger Plus Shop plugin:** 1.0.0 installed and active (24 Nov 2026). Version 1.1.0 adds the branded emails: upload `plugin/ledgerplus-shop-1.1.0.zip` the same way and choose "Replace current with uploaded". Use one route only, not both:
+   - **Plugin zip (recommended):** Plugins > Add New > Upload Plugin > `plugin/ledgerplus-shop-1.1.0.zip` > Activate.
    - **WPCode:** install the free WPCode plugin. The snippet `plugin/ledgerplus-shop-wpcode.php` is then added for you, switched off, and the site owner switches it on.
 
    The plugin adds:

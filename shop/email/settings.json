@@ -1,0 +1,16 @@
+{
+  "woocommerce_email_from_name": "Ledger Plus UAE",
+  "woocommerce_email_from_address": "no-reply@ledgerplus.ae",
+  "woocommerce_email_reply_to_enabled": "yes",
+  "woocommerce_email_reply_to_name": "Ledger Plus UAE",
+  "woocommerce_email_reply_to_address": "info@ledgerplus.ae",
+  "woocommerce_email_header_image": "https://ledgerplus.ae/wp-content/uploads/2026/09/Logo-Assests-01-edited.png",
+  "woocommerce_email_header_image_width": "200",
+  "woocommerce_email_header_alignment": "left",
+  "woocommerce_email_base_color": "#0f5cd8",
+  "woocommerce_email_background_color": "#f6f8fd",
+  "woocommerce_email_body_background_color": "#ffffff",
+  "woocommerce_email_text_color": "#2c3651",
+  "woocommerce_email_footer_text_color": "#5b6684",
+  "woocommerce_email_footer_text": "<strong>Ledger Plus UAE</strong>\nDIFC, Dubai, United Arab Emirates\n<a href=\"tel:+971503420832\">+971 50 342 0832</a> · <a href=\"https://wa.me/971503420832\">WhatsApp</a>\n<a href=\"mailto:info@ledgerplus.ae\">info@ledgerplus.ae</a> · <a href=\"https://ledgerplus.ae\">ledgerplus.ae</a>"
+}

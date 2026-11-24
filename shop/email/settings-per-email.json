@@ -1,0 +1,12 @@
+{
+  "email_customer_processing_order": {
+    "subject": "Your Ledger Plus order #{order_number} is confirmed",
+    "heading": "Thank you for your order",
+    "additional_content": "Thank you for choosing Ledger Plus. Just reply to this email if you have any questions."
+  },
+  "email_customer_completed_order": {
+    "subject": "Your Ledger Plus order #{order_number} is complete",
+    "heading": "Your order is complete",
+    "additional_content": "Thank you for choosing Ledger Plus. Just reply to this email if you have any questions."
+  }
+}

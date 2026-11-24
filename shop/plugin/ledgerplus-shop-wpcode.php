@@ -1,5 +1,5 @@
 /*
- * Ledger Plus Shop - WPCode snippet variant (v1.0.0).
+ * Ledger Plus Shop - WPCode snippet variant (v1.1.0).
  *
  * WPCode: Code type "PHP Snippet", Insert Method "Auto Insert", Location
  * "Run Everywhere". Paste everything below (there is no opening PHP tag on
@@ -33,7 +33,7 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 	 */
 	final class LP_Shop {
 
-		const VERSION = '1.0.0';
+		const VERSION = '1.1.0';
 
 		/* ------------------------------------------------------------------
 		 * F8. Settings. Defaults here; override with a constant in
@@ -208,6 +208,18 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 			// F3b + F3f. Emails (templates/emails/*.php and emails/block/general-block-email.php:148).
 			add_action( 'woocommerce_email_order_meta', array( __CLASS__, 'render_email_block' ), 20, 4 );
 
+			// F11. Email branding. WC_Email::apply_inline_style() passes the template CSS through
+			// woocommerce_email_styles before Emogrifier inlines it (includes/emails/class-wc-email.php:972-1004);
+			// wc_get_email_order_items() filters its template args (includes/wc-template-functions.php:4019-4031).
+			add_filter( 'woocommerce_email_styles', array( __CLASS__, 'filter_email_styles' ), 20, 2 );
+			add_filter( 'woocommerce_email_order_items_args', array( __CLASS__, 'filter_email_order_items_args' ), 20 );
+			// F11. WC_Email::send() passes the inlined message through woocommerce_mail_content
+			// (includes/emails/class-wc-email.php:1275); Emogrifier writes the CSS it cannot inline as one line.
+			add_filter( 'woocommerce_mail_content', array( __CLASS__, 'filter_mail_content' ), 20 );
+			// F11. WooCommerce > Settings > Emails: say so when the new email templates are off (the F11 CSS
+			// needs them; includes/admin/settings/class-wc-settings-emails.php:932-947).
+			add_action( 'admin_notices', array( __CLASS__, 'admin_notice_email_templates' ) );
+
 			// F3b. My Account dashboard (templates/myaccount/dashboard.php:65).
 			add_action( 'woocommerce_account_dashboard', array( __CLASS__, 'render_account_codes' ), 20 );
 
@@ -283,6 +295,9 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 				'admin_paid_notice'     => true,
 				// How long a paid-order hook waits for another request that is working on the same order.
 				'lock_wait_seconds'     => 5,
+				// F11: Ledger Plus look for the WooCommerce emails (CSS + the plugin's own email cards).
+				// false = the v1.0.0 emails, byte for byte.
+				'email_branding'        => true,
 			);
 
 			$settings = function_exists( 'apply_filters' ) ? apply_filters( 'lp_shop_settings', $defaults ) : $defaults;
@@ -1524,11 +1539,15 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 				$subject = sprintf( __( 'Payment confirmed for order #%s (Ledger Plus checks)', 'ledgerplus-shop' ), $order->get_order_number() );
 				/* translators: %s: order number. */
 				$body = '<p>' . esc_html( sprintf( __( 'Order #%s was on hold when the "New order" email was sent. It is now paid. Here are the checks:', 'ledgerplus-shop' ), $order->get_order_number() ) ) . '</p>';
-				$body .= '<ul>';
-				foreach ( self::admin_summary_rows( $order ) as $row ) {
-					$body .= '<li><strong>' . esc_html( $row[0] ) . ':</strong> ' . esc_html( $row[1] ) . '</li>';
+				if ( self::email_branding_enabled() ) {
+					$body .= self::email_checks_card_html( $order, self::admin_summary_rows( $order ) );
+				} else {
+					$body .= '<ul>';
+					foreach ( self::admin_summary_rows( $order ) as $row ) {
+						$body .= '<li><strong>' . esc_html( $row[0] ) . ':</strong> ' . esc_html( $row[1] ) . '</li>';
+					}
+					$body .= '</ul>';
 				}
-				$body .= '</ul>';
 				if ( method_exists( $order, 'get_edit_order_url' ) ) {
 					$body .= '<p><a href="' . esc_url( $order->get_edit_order_url() ) . '">' . esc_html__( 'Open the order', 'ledgerplus-shop' ) . '</a></p>';
 				}
@@ -1789,17 +1808,26 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 		}
 
 		/**
+		 * F7. The three "What happens next" steps (thank-you page and, with F11, the Processing order email).
+		 *
+		 * @return string[]
+		 */
+		public static function next_steps() {
+			return array(
+				__( 'Our team contacts you to create your Ledger Plus login.', 'ledgerplus-shop' ),
+				__( 'We move your data into Ledger Plus.', 'ledgerplus-shop' ),
+				__( 'We book your free onboarding.', 'ledgerplus-shop' ),
+			);
+		}
+
+		/**
 		 * F7. "What happens next" block.
 		 *
 		 * @param bool $awaiting_payment Order not paid yet: the steps start "Once your payment is confirmed:".
 		 * @return string HTML.
 		 */
 		public static function next_steps_html( $awaiting_payment = false ) {
-			$steps = array(
-				__( 'Our team contacts you to create your Ledger Plus login.', 'ledgerplus-shop' ),
-				__( 'We move your data into Ledger Plus.', 'ledgerplus-shop' ),
-				__( 'We book your free onboarding.', 'ledgerplus-shop' ),
-			);
+			$steps = self::next_steps();
 			$html  = '<section class="lp-shop-next" aria-labelledby="lp-shop-next-title">';
 			$html .= '<h2 class="lp-shop-next__title" id="lp-shop-next-title">' . esc_html__( 'What happens next', 'ledgerplus-shop' ) . '</h2>';
 			if ( $awaiting_payment ) {
@@ -1936,7 +1964,12 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 		}
 
 		/**
-		 * F3b + F3f. woocommerce_email_order_meta ( $order, $sent_to_admin, $plain_text, $email ).
+		 * F3b + F3f (+ F11). woocommerce_email_order_meta ( $order, $sent_to_admin, $plain_text, $email ).
+		 *
+		 * Email branding off: the v1.0.0 output. On: the "What happens next" card (Processing order
+		 * email only), the "Your referral code" card and, for the admin, the "Ledger Plus checks" card.
+		 * In the WooCommerce email preview (WooCommerce > Settings > Emails), whose dummy order has no
+		 * Ledger Plus product, the branded cards are shown with a sample code so the design can be checked.
 		 *
 		 * @param \WC_Order $order         Order.
 		 * @param bool      $sent_to_admin Sent to admin.
@@ -1948,21 +1981,41 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 				return;
 			}
 			try {
+				$branded = self::email_branding_enabled();
+				$sample  = false;
 				if ( ! self::order_has_product( $order ) ) {
-					return;
+					if ( ! $branded || ! self::is_email_preview() ) {
+						return;
+					}
+					$sample = true;
 				}
 				$id = (string) $email->id;
 				// Email ids: class-wc-email-customer-processing-order.php:30, -completed-order.php:30, -new-order.php:32.
 				if ( 'customer_processing_order' === $id || 'customer_completed_order' === $id ) {
-					$code = (string) $order->get_meta( self::META_CODE, true );
-					if ( '' === $code ) {
+					$code = $sample ? self::SAMPLE_CODE : (string) $order->get_meta( self::META_CODE, true );
+					if ( ! $branded ) {
+						if ( '' === $code ) {
+							return;
+						}
+						if ( $plain_text ) {
+							echo "\n" . esc_html( wp_strip_all_tags( self::referral_sentence_text( $code ) ) ) . "\n\n";
+						} else {
+							echo wp_kses_post( '<div class="lp-shop-email-referral" style="margin:0 0 24px;padding:16px 20px;border:1px solid #dde5f4;border-radius:12px;background:#eaf1fd;color:#030922;"><p style="margin:0;">' . self::referral_sentence_html( $code ) . '</p></div>' );
+						}
 						return;
 					}
+					$processing = ( 'customer_processing_order' === $id );
 					if ( $plain_text ) {
-						echo "\n" . esc_html( wp_strip_all_tags( self::referral_sentence_text( $code ) ) ) . "\n\n";
-					} else {
-						echo wp_kses_post( '<div class="lp-shop-email-referral" style="margin:0 0 24px;padding:16px 20px;border:1px solid #dde5f4;border-radius:12px;background:#eaf1fd;color:#030922;"><p style="margin:0;">' . self::referral_sentence_html( $code ) . '</p></div>' );
+						$out = $processing ? self::email_next_steps_text() : '';
+						if ( '' !== $code ) {
+							$out .= "\n" . esc_html( wp_strip_all_tags( self::email_referral_text( $code ) ) ) . "\n\n";
+						}
+						echo $out; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped above.
+						return;
 					}
+					$html  = $processing ? self::email_next_steps_html() : '';
+					$html .= ( '' !== $code ) ? self::email_referral_card_html( $code ) : '';
+					echo wp_kses_post( $html );
 				} elseif ( 'new_order' === $id ) {
 					self::render_admin_email_block( $order, (bool) $plain_text );
 				}
@@ -2056,6 +2109,10 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 				echo "\n" . esc_html( wp_strip_all_tags( $out ) ) . "\n\n";
 				return;
 			}
+			if ( self::email_branding_enabled() ) {
+				echo wp_kses_post( self::email_checks_card_html( $order, $rows ) );
+				return;
+			}
 			$html  = '<div class="lp-shop-email-admin" style="margin:0 0 24px;padding:16px 20px;border:1px solid #dde5f4;border-radius:12px;background:#f6f8fd;color:#030922;">';
 			$html .= '<h3 style="margin:0 0 8px;color:#041950;">' . esc_html( $title ) . '</h3><ul style="margin:0;padding:0 0 0 18px;">';
 			foreach ( $rows as $row ) {
@@ -2087,6 +2144,516 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 			} catch ( \Throwable $e ) {
 				self::log( 'Admin order box failed: ' . $e->getMessage() );
 			}
+		}
+
+		/* ==================================================================
+		 * F11. Email branding
+		 *
+		 * The WooCommerce emails keep their own templates (no template override). The plugin only:
+		 *   1. appends CSS through woocommerce_email_styles, which WooCommerce inlines with Emogrifier
+		 *      like its own CSS (class-wc-email.php:972-1004; rules it cannot inline, such as the
+		 *      mobile media query, stay in a <style> element);
+		 *   2. prints its own cards (what happens next, referral code, admin checks) from
+		 *      woocommerce_email_order_meta, with inline, table-based, email-safe styles;
+		 *   3. hides the grey placeholder thumbnail when no ordered product has an image
+		 *      (woocommerce_email_order_items_args);
+		 *   4. warns on WooCommerce > Settings > Emails when WooCommerce's new email templates are off,
+		 *      because the CSS is only added with them (admin_notices).
+		 * Setting 'email_branding' => false restores the v1.0.0 emails.
+		 * ================================================================== */
+
+		/** Code shown on the cards in the WooCommerce email preview, whose dummy order has no code. */
+		const SAMPLE_CODE = 'LP-SAMPLE';
+
+		/** Marks the appended CSS so it is never appended twice. */
+		const EMAIL_CSS_MARKER = '/* ledgerplus-shop: email branding */';
+
+		/**
+		 * Font stack: WooCommerce's "Helvetica" email font (src/Internal/Email/EmailFont.php:27). No web
+		 * font: Outlook for Windows shows Times New Roman when the first font of a stack is a web font.
+		 */
+		const EMAIL_FONT = "'Helvetica Neue', Helvetica, Roboto, Arial, sans-serif";
+
+		/**
+		 * True when F11 is on (setting email_branding).
+		 *
+		 * @return bool
+		 */
+		public static function email_branding_enabled() {
+			$s = self::settings();
+			return ! empty( $s['email_branding'] );
+		}
+
+		/**
+		 * True while WooCommerce renders its email preview (WooCommerce > Settings > Emails). EmailPreview adds
+		 * this filter around the render (src/Internal/Admin/EmailPreview/EmailPreview.php:644, 353-371).
+		 *
+		 * @return bool
+		 */
+		public static function is_email_preview() {
+			return function_exists( 'apply_filters' ) && (bool) apply_filters( 'woocommerce_is_email_preview', false );
+		}
+
+		/**
+		 * True when WooCommerce uses its new ("email improvements") email templates:
+		 * FeaturesUtil::feature_is_enabled( 'email_improvements' ) (src/Internal/Features/FeaturesController.php:513;
+		 * read by templates/emails/email-styles.php:25 and email-header.php:24). The feature is opt-in, but
+		 * WooCommerce switches it on for stores installed since 9.8.0 (includes/class-wc-install.php:1349-1353).
+		 *
+		 * @return bool
+		 */
+		public static function email_improvements_enabled() {
+			$util = '\Automattic\WooCommerce\Utilities\FeaturesUtil';
+			if ( ! class_exists( $util ) || ! method_exists( $util, 'feature_is_enabled' ) ) {
+				return false;
+			}
+			return (bool) call_user_func( array( $util, 'feature_is_enabled' ), 'email_improvements' );
+		}
+
+		/**
+		 * The F11 CSS is written for the WooCommerce "email improvements" templates. Block-editor emails
+		 * render other markup (class-wc-email.php:1845-1853), so F11 stays out of them.
+		 *
+		 * @param object|null $email WC_Email.
+		 * @return bool
+		 */
+		private static function email_templates_supported( $email ) {
+			if ( is_object( $email ) && ! empty( $email->block_email_editor_enabled ) ) {
+				return false;
+			}
+			return self::email_improvements_enabled();
+		}
+
+		/**
+		 * The email font: WooCommerce > Settings > Emails > Font family, mapped exactly as
+		 * templates/emails/email-styles.php:36, 47-63, 68 does (preview transient, EmailFont::$font list of
+		 * safe fonts, Helvetica when the new templates are off). Falls back to EMAIL_FONT.
+		 *
+		 * @return string CSS font-family value (only names, commas, spaces, quotes and hyphens).
+		 */
+		public static function email_font() {
+			if ( ! self::email_improvements_enabled() || ! function_exists( 'get_option' ) ) {
+				return self::EMAIL_FONT;
+			}
+			$key = get_option( 'woocommerce_email_font_family', 'Helvetica' );
+			if ( self::is_email_preview() && function_exists( 'get_transient' ) ) {
+				$preview = get_transient( 'woocommerce_email_font_family' );
+				$key     = ( is_string( $preview ) && '' !== $preview ) ? $preview : $key;
+			}
+			$map = '\Automattic\WooCommerce\Internal\Email\EmailFont';
+			if ( is_string( $key ) && class_exists( $map ) && isset( $map::$font ) && is_array( $map::$font ) && isset( $map::$font[ $key ] ) ) {
+				$font = $map::$font[ $key ];
+				if ( is_string( $font ) && preg_match( "/^[A-Za-z0-9 ,'-]+$/", $font ) ) {
+					return $font;
+				}
+			}
+			return self::EMAIL_FONT;
+		}
+
+		/**
+		 * Reward terms for the branded emails. A placeholder (the default "[Reward terms: to confirm]", or
+		 * any text wholly in square brackets) is left out, so customers never see an unfinished note. Set
+		 * the real terms with LP_SHOP_REWARD_TERMS or the lp_shop_settings filter ('reward_terms').
+		 *
+		 * @return string Plain text ('' = no terms line).
+		 */
+		public static function email_reward_terms() {
+			$s     = self::settings();
+			$terms = trim( (string) $s['reward_terms'] );
+			if ( '' === $terms || self::DEFAULT_REWARD_TERMS === $terms || preg_match( '/^\[[^\]]*\]$/', $terms ) ) {
+				return '';
+			}
+			return $terms;
+		}
+
+		/**
+		 * F11. The referral sentence for the branded plain-text emails (same words as the v1.0.0 sentence,
+		 * without a placeholder for the terms).
+		 *
+		 * @param string $code Code.
+		 * @return string Plain text.
+		 */
+		public static function email_referral_text( $code ) {
+			$s = self::settings();
+			return trim(
+				sprintf(
+					/* translators: 1: referral code, 2: reward text, 3: reward terms. */
+					__( 'Your referral code: %1$s. Share it with another business. When they buy Ledger Plus with your code, %2$s %3$s', 'ledgerplus-shop' ),
+					$code,
+					$s['reward_text'],
+					self::email_reward_terms()
+				)
+			);
+		}
+
+		/**
+		 * F11. On WooCommerce > Settings > Emails only: a warning when email branding is on but WooCommerce
+		 * still uses its legacy email templates. The F11 CSS is not added then (only the plugin's cards
+		 * show), and WooCommerce offers "Try our new email templates!" on that screen
+		 * (includes/admin/settings/class-wc-settings-emails.php:938-947).
+		 */
+		public static function admin_notice_email_templates() {
+			try {
+				if ( ! function_exists( 'current_user_can' ) || ! current_user_can( 'manage_woocommerce' ) ) {
+					return;
+				}
+				// phpcs:disable WordPress.Security.NonceVerification.Recommended -- read-only screen check.
+				$page = ( isset( $_GET['page'] ) && is_string( $_GET['page'] ) ) ? wp_unslash( $_GET['page'] ) : '';
+				$tab  = ( isset( $_GET['tab'] ) && is_string( $_GET['tab'] ) ) ? wp_unslash( $_GET['tab'] ) : '';
+				// phpcs:enable WordPress.Security.NonceVerification.Recommended
+				// Not on one email's own settings, nor while WooCommerce previews the new templates (try-new-templates).
+				if ( 'wc-settings' !== $page || 'email' !== $tab || isset( $_GET['section'] ) || isset( $_GET['try-new-templates'] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+					return;
+				}
+				if ( ! self::email_branding_enabled() || self::email_improvements_enabled() ) {
+					return;
+				}
+				echo '<div class="notice notice-warning"><p>' . esc_html__( 'Ledger Plus Shop: the Ledger Plus email design needs WooCommerce’s new email templates, which are off on this store. Use “Try our new email templates!” below the email colours, check the preview, then save. Until then the emails keep the legacy WooCommerce design and only the Ledger Plus cards are added.', 'ledgerplus-shop' ) . '</p></div>';
+			} catch ( \Throwable $e ) {
+				self::log( 'Email templates notice failed: ' . $e->getMessage() );
+			}
+		}
+
+		/**
+		 * F11. woocommerce_email_styles ( $css, $email ): appends the Ledger Plus email CSS once.
+		 *
+		 * @param string      $css   CSS from templates/emails/email-styles.php (+ other filters).
+		 * @param object|null $email WC_Email.
+		 * @return string
+		 */
+		public static function filter_email_styles( $css, $email = null ) {
+			if ( ! is_string( $css ) || false !== strpos( $css, self::EMAIL_CSS_MARKER ) ) {
+				return $css;
+			}
+			try {
+				if ( ! self::email_branding_enabled() || ! self::email_templates_supported( $email ) ) {
+					return $css;
+				}
+				return $css . "\n" . self::EMAIL_CSS_MARKER . "\n" . self::email_css();
+			} catch ( \Throwable $e ) {
+				self::log( 'Email styles failed: ' . $e->getMessage() );
+				return $css;
+			}
+		}
+
+		/**
+		 * F11. woocommerce_mail_content: keeps every line within the 998 characters RFC 5322 allows.
+		 *
+		 * The F11 styles make some lines longer once inlined: Emogrifier writes the CSS it cannot inline
+		 * (the mobile media query) as a single line (pelago/emogrifier src/Utilities/CssConcatenator.php:
+		 * 100-103), and WooCommerce prints some sections (e.g. Additional information) on one line.
+		 * PHPMailer then switches to quoted-printable, but a relay that does not re-encode could break a
+		 * line inside a style. So: a line break after each "}" inside <style> (CSS ignores it) and, in a
+		 * line still over 998 characters, one before each block-level opening tag that directly follows
+		 * another tag (whitespace there has no visual effect). Only HTML messages, new templates, F11 on.
+		 *
+		 * @param string $content Message after WC_Email::style_inline().
+		 * @return string
+		 */
+		public static function filter_mail_content( $content ) {
+			if ( ! is_string( $content ) || false === stripos( $content, '<style' ) || false === stripos( $content, '</html>' ) ) {
+				return $content;
+			}
+			try {
+				if ( ! self::email_branding_enabled() || ! self::email_improvements_enabled() ) {
+					return $content;
+				}
+				$out = preg_replace_callback(
+					'#(<style\b[^>]*>)(.*?)(</style>)#is',
+					static function ( $m ) {
+						return $m[1] . preg_replace( '/\}(?!\n)/', "}\n", $m[2] ) . $m[3];
+					},
+					$content
+				);
+				$out   = is_string( $out ) ? $out : $content;
+				$lines = explode( "\n", $out );
+				foreach ( $lines as $i => $line ) {
+					if ( strlen( $line ) > 998 ) {
+						$split       = preg_replace( '#(?<=>)(?=<(?:ul|ol|li|h[1-6]|table|thead|tbody|tfoot|tr|td|th|p|div|address|hr|blockquote)\b)#i', "\n", $line );
+						$lines[ $i ] = is_string( $split ) ? $split : $line;
+					}
+				}
+				return implode( "\n", $lines );
+			} catch ( \Throwable $e ) {
+				self::log( 'Email content failed: ' . $e->getMessage() );
+				return $content;
+			}
+		}
+
+		/**
+		 * F11 CSS (filter: lp_shop_email_css). Simple selectors only (ids, classes, element names,
+		 * :last-child like WooCommerce's own CSS) so Emogrifier can inline them. No CSS variables, :is(),
+		 * :has(), flex or grid. Ids are only used for WooCommerce's own elements, which have no classes:
+		 * Gmail ignores id selectors in <style>, so the inlined (desktop) values must work on a phone too.
+		 * Brand colours are fixed here on purpose: navy #041950, blue #0f5cd8, text #2c3651, muted #5b6684,
+		 * line #dde5f4, tint #eaf1fd, surface #f6f8fd, light blue #8fb8ff. The WooCommerce colour pickers
+		 * keep driving the page background and the parts F11 does not restyle; the font follows the
+		 * WooCommerce Font family setting (email_font()). Fixed colours also survive WooCommerce's
+		 * "Auto-sync with theme", which on a classic theme with a theme.json (Hello Elementor) resets
+		 * the five colour options to WooCommerce's defaults (src/Internal/Email/EmailStyleSync.php:91-133,
+		 * EmailColors.php:30-41, 106-110).
+		 * Dark mode, secondary measure only: the logo link gets a white background colour and a
+		 * one-colour background image, which some apps that invert colours leave alone. Outlook for
+		 * Windows ignores the image and apps that darken colours themselves recolour both, so the
+		 * reliable fix is a logo file flattened onto white (EMAIL-DESIGN.md 4c).
+		 * Images blocked: the alt text (the store name) is styled as a navy sans wordmark.
+		 *
+		 * @return string
+		 */
+		public static function email_css() {
+			$font = self::email_font();
+			$css  = <<<CSS
+#wrapper { padding: 32px 0 40px; }
+#inner_wrapper { background-color: #ffffff; border: 1px solid #dde5f4; border-top: 4px solid #0f5cd8; border-radius: 16px; }
+#template_header_image { padding: 32px 32px 0; }
+#template_header_image p { margin: 0; }
+#template_header_image a { background-color: #ffffff; background-image: linear-gradient(#ffffff, #ffffff); border-radius: 6px; color: #041950; }
+#template_header_image img { color: #041950; font-family: {$font}; font-size: 22px; line-height: 28px; }
+.email-logo-text { color: #041950; font-size: 22px; font-weight: bold; margin: 0; }
+#template_header { color: #041950; }
+#header_wrapper { padding: 28px 32px 0; }
+#template_header h1, #template_header h1 a { color: #041950; }
+h1 { font-size: 28px; letter-spacing: -0.5px; line-height: 125%; }
+#body_content_inner { color: #2c3651; font-family: {$font}; font-size: 16px; line-height: 160%; }
+#body_content p { margin: 0 0 14px; }
+.email-introduction { padding-bottom: 10px; }
+h2 { color: #041950; font-size: 18px; line-height: 140%; margin: 0 0 12px; }
+h3 { color: #041950; }
+a { color: #0f5cd8; }
+h2.email-order-detail-heading { font-size: 20px; margin: 0 0 18px; }
+h2.email-order-detail-heading span { color: #5b6684; font-size: 14px; font-weight: normal; margin-top: 2px; }
+.td { color: #2c3651; }
+#body_content table .email-order-details td, #body_content table .email-order-details th { padding-left: 6px; padding-right: 6px; }
+#body_content .email-order-details thead th { border-bottom: 1px solid #dde5f4; color: #5b6684; font-size: 12px; font-weight: bold; letter-spacing: 0.4px; padding-bottom: 10px; text-transform: uppercase; }
+#body_content .email-order-details tbody td { padding-top: 16px; }
+#body_content .order-item-data { border-collapse: collapse; }
+#body_content .wc-product-name { color: #041950; font-size: 16px !important; font-weight: bold !important; line-height: 140%; }
+#body_content .email-order-details tbody tr:last-child td { border-bottom: 0; padding-bottom: 6px; }
+#body_content_inner hr { border-top-color: #dde5f4 !important; margin: 16px 0 !important; }
+#body_content .email-order-details .order-totals td, #body_content .email-order-details .order-totals th { color: #2c3651; font-size: 15px; padding-bottom: 6px; padding-top: 6px; }
+#body_content .email-order-details .order-totals-total th { color: #041950; font-size: 16px; font-weight: bold; padding-top: 12px; }
+#body_content .email-order-details .order-totals-total td { color: #041950; font-size: 20px; font-weight: bold; padding-top: 12px; }
+#body_content .email-order-details .order-totals .includes_tax { color: #2c3651; font-size: 14px; font-weight: normal; margin-top: 2px; }
+#body_content .email-order-details .order-totals-payment_method th, #body_content .email-order-details .order-totals-payment_method td { color: #5b6684; font-size: 14px; }
+#body_content .email-order-details .order-totals-last td, #body_content .email-order-details .order-totals-last th { border-bottom: 0; padding-bottom: 20px; }
+#body_content .email-order-details .order-customer-note td { border-bottom: 0; color: #2c3651; padding-bottom: 8px; padding-top: 4px; }
+#body_content .email-order-details .order-customer-note b { color: #041950; }
+.address-title { color: #041950; display: block; font-size: 18px; font-weight: bold; margin: 0 0 4px; }
+.address { color: #2c3651; font-size: 15px; line-height: 155%; padding: 4px 0 0; }
+.address a { color: #0f5cd8; text-decoration: underline; }
+.additional-fields { background-color: #f6f8fd; border: 1px solid #dde5f4; border-radius: 12px; color: #2c3651; font-size: 15px; margin: 0 0 24px !important; padding: 14px 18px 4px; }
+.additional-fields li { margin: 0 0 10px; }
+.additional-fields strong { color: #041950; }
+#body_content table td td.email-additional-content { color: #2c3651; padding: 8px 0 0; }
+.email-additional-content p { text-align: left; }
+#template_footer { background-color: #041950; border-radius: 0 0 12px 12px; }
+#template_footer #credit { border-top: 0; color: #c9d5ee; font-size: 13px; line-height: 170%; padding: 28px 32px 30px; text-align: center; }
+#template_footer #credit a { color: #8fb8ff; font-weight: bold; text-decoration: none; }
+#template_footer #credit strong, #template_footer #credit b { color: #ffffff; font-size: 15px; }
+#template_footer #credit p { margin: 0; }
+@media screen and (max-width: 600px) {
+#wrapper { padding: 8px 0 16px !important; }
+#template_header_image { padding: 24px 20px 0 !important; }
+#header_wrapper { padding: 20px 20px 0 !important; }
+#header_wrapper h1 { font-size: 24px !important; }
+#body_content_inner_cell { padding: 16px 20px 28px !important; }
+#body_content_inner { font-size: 15px !important; }
+.email-order-item-meta { font-size: 13px !important; }
+#body_content .email-order-details thead th { font-size: 11px !important; letter-spacing: 0.2px !important; }
+#body_content .email-order-details .order-totals-total td { font-size: 18px !important; }
+.email-order-detail-heading { font-size: 18px !important; line-height: 140% !important; }
+#template_footer #credit { padding: 24px 20px 26px !important; }
+.lp-email-card-cell { padding: 18px 18px 6px !important; }
+.lp-email-card-foot { padding: 12px 18px 16px !important; }
+.lp-email-code { font-size: 22px !important; letter-spacing: 2px !important; }
+}
+CSS;
+			$filtered = function_exists( 'apply_filters' ) ? apply_filters( 'lp_shop_email_css', $css ) : $css;
+			return is_string( $filtered ) ? $filtered : $css;
+		}
+
+		/**
+		 * F11. woocommerce_email_order_items_args: no thumbnail column when no ordered product has an
+		 * image (WooCommerce would show its grey placeholder, email-order-items.php:45-49, 68-81).
+		 *
+		 * @param array $args Template args.
+		 * @return array
+		 */
+		public static function filter_email_order_items_args( $args ) {
+			if ( ! is_array( $args ) || empty( $args['show_image'] ) || empty( $args['items'] ) ) {
+				return $args;
+			}
+			try {
+				if ( ! self::email_branding_enabled() ) {
+					return $args;
+				}
+				foreach ( (array) $args['items'] as $item ) {
+					$product = ( is_object( $item ) && method_exists( $item, 'get_product' ) ) ? $item->get_product() : null;
+					if ( is_object( $product ) && method_exists( $product, 'get_image_id' ) && $product->get_image_id() ) {
+						return $args;
+					}
+				}
+				$args['show_image'] = false;
+			} catch ( \Throwable $e ) {
+				self::log( 'Email items args failed: ' . $e->getMessage() );
+			}
+			return $args;
+		}
+
+		/**
+		 * Inline style for email text (font repeated on every cell: Outlook for Windows does not
+		 * inherit the font into tables).
+		 *
+		 * @param string $extra More declarations.
+		 * @return string
+		 */
+		private static function email_text_style( $extra ) {
+			return 'font-family:' . self::email_font() . ';' . $extra;
+		}
+
+		/**
+		 * Small blue capitals above a card's content.
+		 *
+		 * @param string $text Text.
+		 * @return string HTML.
+		 */
+		private static function email_eyebrow( $text ) {
+			return '<p class="lp-email-eyebrow" style="' . esc_attr( self::email_text_style( 'margin:0 0 14px;font-size:12px;line-height:16px;font-weight:bold;letter-spacing:1px;text-transform:uppercase;color:#0f5cd8;' ) ) . '">' . esc_html( $text ) . '</p>' . "\n";
+		}
+
+		/**
+		 * Opening of a card, up to and including its first cell. The card is a one-cell table
+		 * (border-radius is ignored by Outlook for Windows, which then shows square corners) inside a
+		 * full-width spacer table: the gap below the card is cell padding, which every client keeps
+		 * (Outlook for Windows may drop margins on tables). The markup has a line break at each row
+		 * boundary, so no line comes near the 998-character limit of RFC 5322.
+		 *
+		 * @param string $class       Extra class.
+		 * @param string $background  Background colour.
+		 * @param string $border      Border colour.
+		 * @param int    $gap         Space below the card, in px.
+		 * @param string $cell_bottom Bottom padding of the first cell.
+		 * @return string HTML.
+		 */
+		private static function email_card_open( $class, $background, $border, $gap = 24, $cell_bottom = '8px' ) {
+			return '<table role="presentation" class="lp-email-gap" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;"><tr><td style="padding:0 0 ' . absint( $gap ) . 'px;">' . "\n"
+				. '<table role="presentation" class="lp-email-card ' . esc_attr( $class ) . '" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:separate;background-color:' . esc_attr( $background ) . ';border:1px solid ' . esc_attr( $border ) . ';border-radius:14px;">' . "\n"
+				. '<tr><td class="lp-email-card-cell" style="' . esc_attr( self::email_text_style( 'padding:22px 24px ' . $cell_bottom . ';color:#2c3651;' ) ) . '">' . "\n";
+		}
+
+		/**
+		 * Closing of a card opened with email_card_open() (after its last row).
+		 *
+		 * @return string HTML.
+		 */
+		private static function email_card_close() {
+			return '</table>' . "\n" . '</td></tr></table>' . "\n";
+		}
+
+		/**
+		 * "Need help? Call or WhatsApp +971 50 342 0832." for emails (same text as help_line_html()).
+		 *
+		 * @return string HTML.
+		 */
+		public static function email_help_line_html() {
+			$s    = self::settings();
+			$tel  = 'tel:' . preg_replace( '/[^0-9+]/', '', $s['phone_tel'] );
+			$link = 'color:#0f5cd8;font-weight:bold;text-decoration:none;';
+			$call = '<a href="' . esc_url( $tel ) . '" style="' . $link . '">' . esc_html__( 'Call', 'ledgerplus-shop' ) . '</a>';
+			$wa   = '<a href="' . esc_url( $s['whatsapp_url'] ) . '" style="' . $link . '">' . esc_html__( 'WhatsApp', 'ledgerplus-shop' ) . '</a>';
+			$num  = '<a href="' . esc_url( $tel ) . '" style="color:#041950;font-weight:bold;text-decoration:none;white-space:nowrap;">' . esc_html( $s['phone_display'] ) . '</a>';
+			/* translators: 1: "Call" link, 2: "WhatsApp" link, 3: phone number link. */
+			return sprintf( esc_html__( 'Need help? %1$s or %2$s %3$s.', 'ledgerplus-shop' ), $call, $wa, $num );
+		}
+
+		/**
+		 * F11. "What happens next" card for the Processing order email.
+		 *
+		 * @return string HTML.
+		 */
+		public static function email_next_steps_html() {
+			$html  = self::email_card_open( 'lp-email-next', '#ffffff', '#dde5f4', 16 );
+			$html .= self::email_eyebrow( __( 'What happens next', 'ledgerplus-shop' ) );
+			$html .= '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;">' . "\n";
+			foreach ( self::next_steps() as $i => $step ) {
+				$html .= '<tr>' . "\n"
+					. '<td width="40" valign="top" style="width:28px;padding:0 12px 14px 0;">'
+					. '<table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>' . "\n"
+					. '<td class="lp-email-num" width="28" height="28" align="center" valign="middle" bgcolor="#0f5cd8" style="' . esc_attr( self::email_text_style( 'width:28px;height:28px;padding:0;background-color:#0f5cd8;border-radius:14px;color:#ffffff;font-size:13px;line-height:28px;font-weight:bold;text-align:center;' ) ) . '">' . esc_html( (string) ( $i + 1 ) ) . '</td>' . "\n"
+					. '</tr></table>'
+					. '</td>' . "\n"
+					. '<td valign="top" style="' . esc_attr( self::email_text_style( 'padding:4px 0 14px;font-size:15px;line-height:22px;color:#041950;' ) ) . '">' . esc_html( $step ) . '</td>' . "\n"
+					. '</tr>' . "\n";
+			}
+			$html .= '</table>' . "\n" . '</td></tr>' . "\n";
+			$html .= '<tr><td class="lp-email-card-foot" style="' . esc_attr( self::email_text_style( 'padding:14px 24px 18px;border-top:1px solid #dde5f4;font-size:14px;line-height:20px;color:#5b6684;' ) ) . '">' . self::email_help_line_html() . '</td></tr>' . "\n";
+			$html .= self::email_card_close();
+			return $html;
+		}
+
+		/**
+		 * F11. Plain-text "What happens next" for the Processing order email.
+		 *
+		 * @return string Escaped text.
+		 */
+		public static function email_next_steps_text() {
+			$s   = self::settings();
+			$out = "\n" . strtoupper( __( 'What happens next', 'ledgerplus-shop' ) ) . "\n";
+			foreach ( self::next_steps() as $i => $step ) {
+				$out .= ( $i + 1 ) . '. ' . $step . "\n";
+			}
+			/* translators: 1: "Call", 2: "WhatsApp", 3: phone number. */
+			$out .= sprintf( __( 'Need help? %1$s or %2$s %3$s.', 'ledgerplus-shop' ), __( 'Call', 'ledgerplus-shop' ), __( 'WhatsApp', 'ledgerplus-shop' ), $s['phone_display'] );
+			return "\n" . esc_html( wp_strip_all_tags( $out ) ) . "\n";
+		}
+
+		/**
+		 * F11. "Your referral code" card: the code large, then the reward sentence and, when they are
+		 * set (not a placeholder), the reward terms (email_reward_terms()).
+		 *
+		 * @param string $code Code.
+		 * @return string HTML.
+		 */
+		public static function email_referral_card_html( $code ) {
+			$s     = self::settings();
+			$terms = self::email_reward_terms();
+			$html  = self::email_card_open( 'lp-email-referral', '#eaf1fd', '#c9dbfb' );
+			$html .= self::email_eyebrow( __( 'Your referral code', 'ledgerplus-shop' ) );
+			$html .= '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;"><tr>' . "\n"
+				. '<td class="lp-email-code" bgcolor="#ffffff" style="' . esc_attr( self::email_text_style( 'padding:10px 18px;background-color:#ffffff;border:2px dashed #0f5cd8;border-radius:10px;font-size:26px;line-height:32px;font-weight:bold;letter-spacing:3px;color:#041950;' ) ) . '" data-lp-code="' . esc_attr( $code ) . '">' . esc_html( $code ) . '</td>' . "\n"
+				. '</tr></table>' . "\n";
+			$html .= '<p style="' . esc_attr( self::email_text_style( 'margin:14px 0 14px;font-size:15px;line-height:23px;color:#2c3651;' ) ) . '">'
+				/* translators: %s: reward text, e.g. "you get AED 999 cash back after their payment is confirmed." */
+				. sprintf( esc_html__( 'Share it with another business. When they buy Ledger Plus with your code, %s', 'ledgerplus-shop' ), esc_html( $s['reward_text'] ) )
+				. ( '' !== $terms ? ' <span style="color:#5b6684;">' . esc_html( $terms ) . '</span>' : '' )
+				. '</p>' . "\n";
+			$html .= '</td></tr>' . "\n" . self::email_card_close();
+			return $html;
+		}
+
+		/**
+		 * F11. "Ledger Plus checks" card for the admin emails: one label / value row per check.
+		 * A possible existing customer is shown in red.
+		 *
+		 * @param \WC_Order $order Order.
+		 * @param array     $rows  admin_summary_rows().
+		 * @return string HTML.
+		 */
+		public static function email_checks_card_html( $order, $rows ) {
+			$repeat = is_object( $order ) && method_exists( $order, 'get_meta' ) && 'yes' === $order->get_meta( self::META_REPEAT, true );
+			$html   = self::email_card_open( 'lp-email-checks', '#f6f8fd', '#dde5f4', 24, '22px' );
+			$html  .= self::email_eyebrow( __( 'Ledger Plus checks', 'ledgerplus-shop' ) );
+			$html  .= '<table role="presentation" class="lp-email-checks-table" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;">' . "\n";
+			foreach ( array_values( $rows ) as $i => $row ) {
+				$line   = $i ? 'border-top:1px solid #dde5f4;' : '';
+				$alert  = ( 3 === $i && $repeat );
+				$html  .= '<tr>' . "\n"
+					. '<td width="44%" valign="top" style="' . esc_attr( self::email_text_style( 'width:44%;padding:9px 12px 9px 0;' . $line . 'font-size:14px;line-height:20px;color:#5b6684;' ) ) . '">' . esc_html( $row[0] ) . '</td>' . "\n"
+					. '<td valign="top" style="' . esc_attr( self::email_text_style( 'padding:9px 0;' . $line . 'font-size:14px;line-height:20px;font-weight:bold;color:' . ( $alert ? '#b42318' : '#041950' ) . ';' ) ) . '">' . esc_html( $row[1] ) . '</td>' . "\n"
+					. '</tr>' . "\n";
+			}
+			$html .= '</table>' . "\n" . '</td></tr>' . "\n" . self::email_card_close();
+			return $html;
 		}
 
 		/* ==================================================================

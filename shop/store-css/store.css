@@ -1,0 +1,1120 @@
+/* ==========================================================================
+   Ledger Plus store styles (Customizer, Additional CSS)
+   Targets: WooCommerce 11.3.1 block Cart + block Checkout, classic My Account,
+   classic single product, classic order received, Hello Elementor 3.5.1.
+   Every rule is scoped to WooCommerce body classes, so nothing else on the
+   site changes. Layout widths, flex and grid of WooCommerce containers are
+   left alone on purpose. Only colours, type, borders, radii, shadows and states.
+
+   NOTE FOR EDITORS: the checker in Appearance, Customize, Additional CSS
+   (CSSLint 1.0.4, from 2016) does not know :is(), :has() or @container and
+   reports them as errors. The CSS is valid in all current browsers. To save a
+   change here, tick "Update anyway, even though it might break your site?"
+   or turn off syntax highlighting in your user profile. Do not delete rules
+   because of those messages.
+   ========================================================================== */
+
+/* 1. Tokens (store pages only) ------------------------------------------- */
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) {
+	--lp-navy: #041950;
+	--lp-blue: #0f5cd8;
+	--lp-blue-dark: #0b4cb8;
+	--lp-ink: #030922;
+	--lp-muted: #5b6684;
+	--lp-line: #dde5f4;
+	--lp-tint: #eaf1fd;
+	--lp-surface: #f6f8fd;
+	--lp-light-blue: #8fb8ff;
+	--lp-text: #2c3651;
+	--lp-field: #7a86a3;
+	--lp-error: #b42318;
+	--lp-success: #1a7f4b;
+	--lp-font: "DM Sans", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+	--lp-radius-btn: 12px;
+	--lp-radius-card: 20px;
+	--lp-radius-input: 10px;
+	--lp-shadow-card: 0 1px 2px rgba(4, 25, 80, 0.05), 0 16px 40px -20px rgba(4, 25, 80, 0.22);
+	/* WooCommerce classic form variables (client/legacy/css/_variables.scss) */
+	--wc-form-border-color: #7a86a3;
+	--wc-form-border-radius: 10px;
+	--wc-form-color-text: #2c3651;
+}
+
+/* 2. Theme page title: hidden where we print our own heading block ------- */
+body.woocommerce-cart .page-header,
+body.woocommerce-checkout:not(.woocommerce-order-received):not(.woocommerce-order-pay) .page-header,
+body.woocommerce-account .page-header {
+	display: none;
+}
+
+/* My Account sections (Orders, Order #, Downloads, Account details, Addresses,
+   Payment methods, Lost or Set password): WooCommerce puts the section name in
+   the theme title, so show it there and keep only the help line of our block. */
+body.woocommerce-account:is(.woocommerce-orders, .woocommerce-view-order, .woocommerce-downloads, .woocommerce-edit-account, .woocommerce-edit-address, .woocommerce-payment-methods, .woocommerce-add-payment-method, .woocommerce-lost-password) .page-header {
+	display: block;
+}
+
+body.woocommerce-account:is(.woocommerce-orders, .woocommerce-view-order, .woocommerce-downloads, .woocommerce-edit-account, .woocommerce-edit-address, .woocommerce-payment-methods, .woocommerce-add-payment-method, .woocommerce-lost-password) .lp-shop-head--account :is(.lp-shop-eyebrow, .lp-shop-title, .lp-shop-sub) {
+	display: none;
+}
+
+body.woocommerce-account:is(.woocommerce-orders, .woocommerce-view-order, .woocommerce-downloads, .woocommerce-edit-account, .woocommerce-edit-address, .woocommerce-payment-methods, .woocommerce-add-payment-method, .woocommerce-lost-password) .lp-shop-head--account {
+	padding-top: 0;
+}
+
+/* Our checkout heading and trust lines make no sense on the thank-you page */
+body.woocommerce-checkout:is(.woocommerce-order-received, .woocommerce-order-pay) .lp-shop-head,
+body.woocommerce-checkout.woocommerce-order-received .lp-shop-foot {
+	display: none;
+}
+
+/* Empty cart: the line with the package price no longer applies. The empty cart
+   block only exists in the DOM after load when the cart is empty. */
+body.woocommerce-cart .site-main:has(.wp-block-woocommerce-cart:not(.is-loading) .wp-block-woocommerce-empty-cart-block) .lp-shop-head--cart .lp-shop-sub {
+	display: none;
+}
+
+/* 3. Base type and links inside the main content -------------------------- */
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .site-main {
+	font-family: var(--lp-font);
+	color: var(--lp-text);
+}
+
+/* Hello Elementor resets headings to weight 500; the brand uses 700 */
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .site-main :is(h1, h2, h3, h4) {
+	font-family: var(--lp-font);
+	font-weight: 700;
+	letter-spacing: -0.01em;
+	color: var(--lp-navy);
+}
+
+/* Text links only. Links styled as buttons (WordPress element buttons, classic
+   .button, block buttons) keep their own colours. */
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .site-main a:not(.wp-element-button, .wp-block-button__link, .button, .wc-block-components-button) {
+	color: var(--lp-blue);
+	text-underline-offset: 0.18em;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .site-main a:not(.wp-element-button, .wp-block-button__link, .button, .wc-block-components-button):hover {
+	color: var(--lp-blue-dark);
+}
+
+/* One visible focus ring for keyboard users */
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .site-main :is(a, button, input, select, textarea, summary, [role="button"], [tabindex]):focus-visible {
+	outline: 2px solid var(--lp-blue);
+	outline-offset: 2px;
+	box-shadow: none;
+}
+
+/* Phones: Hello Elementor leaves only a 10px side gutter below 576px. Give the
+   store pages a 16px gutter (theme container only, WooCommerce untouched). */
+@media (max-width: 575px) {
+	body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .site-main {
+		padding-inline: 16px;
+	}
+}
+
+/* Where the theme title stays (Order received, My Account sections), brand it.
+   Hello Elementor gives the title its own 10px side padding on phones; drop it
+   so the title lines up with the content under it. */
+body:is(.woocommerce-order-received, .woocommerce-account) .page-header .entry-title {
+	margin-top: 32px;
+	padding-inline: 0;
+	color: var(--lp-navy);
+	font-family: var(--lp-font);
+	font-weight: 700;
+	letter-spacing: -0.02em;
+}
+
+/* Hello Elementor adds margin-inline: -80px to .alignwide. The default Cart and
+   Checkout blocks carry alignwide, but WooCommerce fixes their width at 100%,
+   so the negative margin only shifts them 80px to the left: off the content
+   edge on desktop and partly off screen (clipped) on phones. Resetting the
+   margin puts them back where WooCommerce intends. Width and the one or two
+   column switch do not change. */
+body.woocommerce-cart .wp-block-woocommerce-cart.alignwide,
+body.woocommerce-checkout .wp-block-woocommerce-checkout.alignwide {
+	margin-inline: 0;
+}
+
+/* 4. Our heading, note and help blocks (lp-shop-*) ------------------------ */
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .lp-shop-head {
+	margin: 0 0 28px;
+	padding: 32px 0 0;
+}
+
+/* Comfortable line length for the running text; the blocks themselves follow
+   the content width, so their edges line up with the cart and checkout. */
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) :is(.lp-shop-sub, .lp-shop-note, .lp-shop-trust) {
+	max-width: 62ch;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .lp-shop-eyebrow {
+	display: inline-block;
+	margin: 0 0 14px;
+	padding: 6px 12px;
+	border-radius: 999px;
+	background: var(--lp-tint);
+	color: var(--lp-blue);
+	font-family: var(--lp-font);
+	font-size: 13px;
+	font-weight: 700;
+	line-height: 1.2;
+	letter-spacing: 0.06em;
+	text-transform: uppercase;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .site-main h1.lp-shop-title,
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) h1.lp-shop-title {
+	margin: 0 0 10px;
+	color: var(--lp-navy);
+	font-family: var(--lp-font);
+	font-size: clamp(30px, 2.2rem + 1vw, 44px);
+	font-weight: 700;
+	line-height: 1.12;
+	letter-spacing: -0.02em;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .lp-shop-sub {
+	margin: 0 0 12px;
+	color: var(--lp-text);
+	font-size: 18px;
+	line-height: 1.5;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .lp-shop-note {
+	margin: 0 0 12px;
+	padding: 12px 16px;
+	border: 1px solid var(--lp-line);
+	border-left: 4px solid var(--lp-blue);
+	border-radius: var(--lp-radius-btn);
+	background: var(--lp-surface);
+	color: var(--lp-text);
+	font-size: 15px;
+	line-height: 1.5;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .lp-shop-help {
+	margin: 0;
+	color: var(--lp-muted);
+	font-size: 15px;
+	line-height: 1.6;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .site-main .lp-shop-help a {
+	color: var(--lp-blue);
+	font-weight: 600;
+	text-decoration: underline;
+	white-space: nowrap;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .site-main .lp-shop-help a:hover {
+	color: var(--lp-blue-dark);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .lp-shop-foot {
+	margin: 8px 0 40px;
+	padding: 20px 0 0;
+	border-top: 1px solid var(--lp-line);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .lp-shop-trust {
+	margin: 0 0 14px;
+	padding: 0;
+	list-style: none;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .lp-shop-trust li {
+	position: relative;
+	margin: 0 0 8px;
+	padding: 0 0 0 28px;
+	color: var(--lp-text);
+	font-size: 15px;
+	line-height: 1.5;
+}
+
+/* Small tick drawn with borders, no icon font and no image needed */
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .lp-shop-trust li::before {
+	content: "";
+	position: absolute;
+	left: 2px;
+	top: 0.2em;
+	width: 16px;
+	height: 16px;
+	border-radius: 50%;
+	background: var(--lp-tint);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .lp-shop-trust li::after {
+	content: "";
+	position: absolute;
+	left: 7.5px;
+	top: calc(0.2em + 4px);
+	width: 4px;
+	height: 7px;
+	border: solid var(--lp-blue);
+	border-width: 0 2px 2px 0;
+	transform: rotate(45deg);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .lp-shop-tbc {
+	color: var(--lp-muted);
+	font-style: italic;
+}
+
+/* 5. Block Cart and block Checkout: shared ------------------------------- */
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) {
+	--wc-separator-color: var(--lp-line);
+	color: var(--lp-text);
+	font-family: var(--lp-font);
+}
+
+/* Step and section headings */
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-title.wc-block-components-checkout-step__title {
+	color: var(--lp-navy);
+	font-family: var(--lp-font);
+	font-weight: 700;
+	letter-spacing: -0.01em;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-checkout-step__description {
+	color: var(--lp-muted);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-cart__totals-title {
+	color: var(--lp-navy);
+	font-family: var(--lp-font);
+	font-weight: 700;
+	letter-spacing: 0.04em;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-cart-items__header {
+	color: var(--lp-muted);
+	letter-spacing: 0.04em;
+}
+
+/* Text inputs, select, textarea: colour, radius and states only. Padding and
+   height stay as WooCommerce sets them, so the floating labels keep working. */
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-text-input :is(input[type="text"], input[type="email"], input[type="tel"], input[type="number"], input[type="password"], input[type="url"], input[type="date"]),
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-blocks-components-select .wc-blocks-components-select__select,
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) textarea.wc-block-components-textarea {
+	border-color: var(--lp-field);
+	border-radius: var(--lp-radius-input);
+	background-color: #fff;
+	color: var(--lp-ink);
+	box-shadow: none;
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-blocks-components-select .wc-blocks-components-select__container {
+	border-radius: var(--lp-radius-input);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-text-input :is(input[type="text"], input[type="email"], input[type="tel"], input[type="number"], input[type="password"], input[type="url"], input[type="date"]):hover,
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-blocks-components-select .wc-blocks-components-select__select:hover,
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) textarea.wc-block-components-textarea:hover {
+	border-color: var(--lp-muted);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-text-input :is(input[type="text"], input[type="email"], input[type="tel"], input[type="number"], input[type="password"], input[type="url"], input[type="date"]):focus,
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-blocks-components-select .wc-blocks-components-select__select:focus,
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) textarea.wc-block-components-textarea:focus {
+	border-color: var(--lp-blue);
+	outline: 2px solid var(--lp-blue);
+	outline-offset: 1px;
+	box-shadow: 0 0 0 4px rgba(15, 92, 216, 0.14);
+}
+
+/* Floating labels */
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-text-input label,
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-blocks-components-select .wc-blocks-components-select__label {
+	color: var(--lp-muted);
+}
+
+/* Error states keep their red after the overrides above */
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-text-input.has-error input,
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .has-error .wc-blocks-components-select__select {
+	border-color: var(--lp-error);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-text-input.has-error input:focus,
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .has-error .wc-blocks-components-select__select:focus {
+	border-color: var(--lp-error);
+	outline-color: var(--lp-error);
+	box-shadow: 0 0 0 4px rgba(180, 35, 24, 0.12);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-text-input.has-error label {
+	color: var(--lp-error);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-validation-error {
+	color: var(--lp-error);
+}
+
+/* Checkboxes and radios */
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-checkbox .wc-block-components-checkbox__input[type="checkbox"] {
+	border-color: var(--lp-field);
+	border-radius: 6px;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-checkbox .wc-block-components-checkbox__input[type="checkbox"]:checked {
+	border-color: var(--lp-blue);
+	background: var(--lp-tint);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-checkbox .wc-block-components-checkbox__mark {
+	fill: var(--lp-blue);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-checkbox .wc-block-components-checkbox__input[type="checkbox"]:focus {
+	outline: 2px solid var(--lp-blue);
+	outline-offset: 2px;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-checkbox.has-error .wc-block-components-checkbox__input[type="checkbox"] {
+	border-color: var(--lp-error);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-radio-control .wc-block-components-radio-control__input {
+	border-color: var(--lp-field);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-radio-control .wc-block-components-radio-control__input:checked {
+	border-color: var(--lp-blue);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-radio-control .wc-block-components-radio-control__input:checked::before {
+	background: var(--lp-blue);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-radio-control .wc-block-components-radio-control__input:focus {
+	outline: 2px solid var(--lp-blue);
+	outline-offset: 2px;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-radio-control__label {
+	color: var(--lp-navy);
+	font-weight: 600;
+}
+
+/* Selected payment method: one blue outline round the whole option */
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-radio-control--highlight-checked::after {
+	border-radius: var(--lp-radius-input);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-radio-control--highlight-checked :is(label.wc-block-components-radio-control__option--checked-option-highlighted, .wc-block-components-radio-control-accordion-option--checked-option-highlighted) {
+	box-shadow: 0 0 0 1.5px var(--lp-blue) inset;
+	border-radius: var(--lp-radius-input);
+}
+
+/* Product names and prices in the cart table and the order summary */
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) :is(.wc-block-cart-items, .wc-block-components-order-summary) .wc-block-components-product-name {
+	color: var(--lp-navy);
+	font-weight: 600;
+	text-decoration: none;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) :is(.wc-block-cart-items, .wc-block-components-order-summary) .wc-block-components-product-metadata__description {
+	color: var(--lp-muted);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-order-summary-item__quantity {
+	border-color: var(--lp-navy);
+	background: var(--lp-navy);
+	color: #fff;
+}
+
+/* Totals and the emphasised total line */
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-totals-item__label {
+	color: var(--lp-text);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-totals-item__value {
+	color: var(--lp-navy);
+	font-weight: 600;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-totals-item__description {
+	color: var(--lp-muted);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-totals-footer-item .wc-block-components-totals-item__label {
+	color: var(--lp-navy);
+	font-weight: 700;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-totals-footer-item .wc-block-components-totals-item__value {
+	color: var(--lp-navy);
+	font-size: 1.375em;
+	font-weight: 700;
+	letter-spacing: -0.01em;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-totals-footer-item .wc-block-components-totals-footer-item-tax {
+	color: var(--lp-muted);
+	font-weight: 400;
+}
+
+/* Coupon (referral code) panel: the toggle reads as a link */
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-totals-coupon .wc-block-components-panel__button {
+	color: var(--lp-blue);
+	font-weight: 600;
+	text-decoration: none;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-totals-coupon .wc-block-components-panel__button:hover {
+	color: var(--lp-blue-dark);
+	text-decoration: underline;
+	text-underline-offset: 0.18em;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-totals-coupon .wc-block-components-panel__button:focus-visible {
+	outline: 2px solid var(--lp-blue);
+	outline-offset: 2px;
+	border-radius: 4px;
+}
+
+/* The toggle is only about 20px tall. An invisible layer 12px above and below
+   makes it easier to tap; it sits inside the padding round the toggle, so
+   nothing moves and no other control is covered. The toggle is already
+   position: relative in WooCommerce (panel/style.scss). */
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-totals-coupon .wc-block-components-panel__button::before {
+	content: "";
+	position: absolute;
+	inset: -12px 0;
+}
+
+/* Buttons: Apply (coupon), Place order, Proceed to checkout ---------------- */
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-button.wc-block-components-totals-coupon__button {
+	border: 0;
+	border-radius: var(--lp-radius-btn);
+	background: var(--lp-navy);
+	color: #fff;
+	font-family: var(--lp-font);
+	font-weight: 600;
+	text-decoration: none;
+	box-shadow: none;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-button.wc-block-components-totals-coupon__button:not(:disabled):hover {
+	background: #0a2a78;
+	color: #fff;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) :is(.wc-block-components-checkout-place-order-button, .wc-block-cart__submit-button).wc-block-components-button {
+	border: 0;
+	border-radius: var(--lp-radius-btn);
+	background: var(--lp-blue);
+	color: #fff;
+	font-family: var(--lp-font);
+	font-size: 17px;
+	font-weight: 700;
+	letter-spacing: 0.01em;
+	text-decoration: none;
+	box-shadow: 0 10px 24px -12px rgba(15, 92, 216, 0.7);
+	transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) :is(.wc-block-components-checkout-place-order-button, .wc-block-cart__submit-button).wc-block-components-button:not(:disabled):not([aria-disabled="true"]):hover {
+	background: var(--lp-blue-dark);
+	color: #fff;
+	box-shadow: 0 12px 28px -12px rgba(11, 76, 184, 0.8);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) :is(.wc-block-components-checkout-place-order-button, .wc-block-cart__submit-button, .wc-block-components-totals-coupon__button).wc-block-components-button:focus {
+	box-shadow: none;
+	outline: 3px solid transparent;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) :is(.wc-block-components-checkout-place-order-button, .wc-block-cart__submit-button, .wc-block-components-totals-coupon__button).wc-block-components-button:focus-visible {
+	outline: 3px solid var(--lp-navy);
+	outline-offset: 3px;
+	box-shadow: 0 0 0 3px #fff;
+}
+
+/* 6. Block Checkout: order summary card ------------------------------------ */
+/* Same container width WooCommerce uses for the two-column layout (920px) */
+@container (min-width: 920px) {
+	body.woocommerce-checkout .wp-block-woocommerce-checkout .wp-block-woocommerce-checkout-order-summary-block {
+		border: 1px solid var(--lp-line);
+		border-radius: var(--lp-radius-card);
+		background: #fff;
+		box-shadow: var(--lp-shadow-card);
+		padding-bottom: 6px;
+	}
+
+	/* Keep the Total row on the same 16px inset as the rows above it */
+	body.woocommerce-checkout .wp-block-woocommerce-checkout .wc-block-checkout__sidebar .wc-block-components-totals-item.wc-block-components-totals-footer-item {
+		padding-left: 16px;
+		padding-right: 16px;
+	}
+}
+
+body.woocommerce-checkout .wp-block-woocommerce-checkout .wc-block-components-checkout-order-summary__title-text {
+	color: var(--lp-navy);
+	font-family: var(--lp-font);
+	font-weight: 700;
+}
+
+body.woocommerce-checkout .wp-block-woocommerce-checkout .wc-block-components-checkout-order-summary__title-price {
+	color: var(--lp-navy);
+	font-weight: 700;
+}
+
+body.woocommerce-checkout .wp-block-woocommerce-checkout .wc-block-checkout__terms {
+	color: var(--lp-muted);
+}
+
+/* One column (tablet and phone): the summary box next to the Pay button is the
+   same card as the two-column summary */
+@container (max-width: 919px) {
+	body.woocommerce-checkout .wp-block-woocommerce-checkout .wp-block-woocommerce-checkout-order-summary-block .checkout-order-summary-block-fill {
+		border-color: var(--lp-line);
+		border-radius: var(--lp-radius-card);
+		background: #fff;
+		box-shadow: var(--lp-shadow-card);
+	}
+}
+
+/* 7. Block Cart: totals column as a card ---------------------------------- */
+body.woocommerce-cart .wp-block-woocommerce-cart .wc-block-cart .wc-block-cart__sidebar {
+	padding: 20px 20px 4px;
+	border: 1px solid var(--lp-line);
+	border-radius: var(--lp-radius-card);
+	background: #fff;
+	box-shadow: var(--lp-shadow-card);
+}
+
+/* One column: WooCommerce hides the "Cart totals" title, so drop the rule line
+   that would otherwise sit at the very top of the card */
+@container (max-width: 919px) {
+	body.woocommerce-cart .wp-block-woocommerce-cart .wc-block-cart__sidebar .wp-block-woocommerce-cart-order-summary-block > .wc-block-components-totals-wrapper:first-of-type {
+		border-top: 0;
+		padding-top: 0;
+	}
+}
+
+/* Empty cart: the "New in store" product grid. Its Add to cart link is a
+   WordPress element button (white on #32373c by default); give it the brand
+   button colours. */
+body.woocommerce-cart .wp-block-woocommerce-empty-cart-block .wc-block-grid__product-add-to-cart .wp-block-button__link {
+	border-radius: var(--lp-radius-btn);
+	background-color: var(--lp-blue);
+	color: #fff;
+	font-family: var(--lp-font);
+	font-weight: 600;
+	text-decoration: none;
+}
+
+body.woocommerce-cart .wp-block-woocommerce-empty-cart-block .wc-block-grid__product-add-to-cart .wp-block-button__link:hover {
+	background-color: var(--lp-blue-dark);
+	color: #fff;
+}
+
+body.woocommerce-cart .site-main .wp-block-woocommerce-empty-cart-block .wc-block-grid__product-add-to-cart .wp-block-button__link:focus-visible {
+	outline: 3px solid var(--lp-navy);
+	outline-offset: 3px;
+	box-shadow: 0 0 0 3px #fff;
+}
+
+body.woocommerce-cart .site-main .wp-block-woocommerce-empty-cart-block a.wc-block-grid__product-link {
+	color: var(--lp-navy);
+	text-decoration: none;
+}
+
+body.woocommerce-cart .site-main .wp-block-woocommerce-empty-cart-block a.wc-block-grid__product-link:hover {
+	color: var(--lp-blue);
+}
+
+/* 8. Notices --------------------------------------------------------------- */
+/* Block notices (cart, checkout and anywhere WooCommerce prints block notices) */
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .wc-block-components-notice-banner {
+	border-radius: var(--lp-radius-btn);
+	color: var(--lp-text);
+	font-family: var(--lp-font);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .wc-block-components-notice-banner.is-info {
+	border-color: var(--lp-blue);
+	background-color: var(--lp-tint);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .wc-block-components-notice-banner.is-info > svg {
+	background-color: var(--lp-blue);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .wc-block-components-notice-banner.is-success {
+	border-color: var(--lp-success);
+	background-color: #effaf4;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .wc-block-components-notice-banner.is-success > svg {
+	background-color: var(--lp-success);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .wc-block-components-notice-banner.is-error {
+	border-color: var(--lp-error);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .wc-block-components-notice-banner.is-error > svg {
+	background-color: var(--lp-error);
+}
+
+/* Classic notices (My Account, product page, order received) */
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) :is(.woocommerce-message, .woocommerce-info, .woocommerce-error) {
+	border: 1px solid var(--lp-line);
+	border-top-width: 3px;
+	border-radius: var(--lp-radius-btn);
+	background-color: var(--lp-surface);
+	color: var(--lp-text);
+	font-family: var(--lp-font);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .woocommerce-info {
+	border-top-color: var(--lp-blue);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .woocommerce-info::before {
+	color: var(--lp-blue);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .woocommerce-message {
+	border-top-color: var(--lp-success);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .woocommerce-message::before {
+	color: var(--lp-success);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .woocommerce-error {
+	border-top-color: var(--lp-error);
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .woocommerce-error::before {
+	color: var(--lp-error);
+}
+
+/* 9. Classic WooCommerce buttons (replace the purple defaults) ------------- */
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) :is(a, button, input).button {
+	border: 0;
+	border-radius: var(--lp-radius-btn);
+	background-color: var(--lp-tint);
+	color: var(--lp-navy);
+	font-family: var(--lp-font);
+	font-weight: 600;
+	text-decoration: none;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) :is(a, button, input).button:hover {
+	background-color: #d5e3fb;
+	color: var(--lp-navy);
+	text-decoration: none;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) :is(a, button, input).button.alt {
+	background-color: var(--lp-blue);
+	color: #fff;
+}
+
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) :is(a, button, input).button.alt:hover {
+	background-color: var(--lp-blue-dark);
+	color: #fff;
+}
+
+/* WooCommerce gives disabled alt buttons (and their hover) extra weight. The
+   trailing :is(*, :hover) always matches and only lifts the weight above it. */
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .site-main :is(a, button, input).button.alt:is(.disabled, :disabled, [disabled]):is(*, :hover) {
+	background-color: var(--lp-blue);
+	color: #fff;
+}
+
+/* .site-main is part of the selector so this outweighs the general focus rule
+   in section 3 (which would otherwise win and draw a blue ring on blue buttons) */
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .site-main :is(a, button, input).button:focus-visible {
+	outline: 3px solid var(--lp-navy);
+	outline-offset: 3px;
+	box-shadow: 0 0 0 3px #fff;
+}
+
+/* Buttons inside classic notices stay readable */
+body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) :is(.woocommerce-message, .woocommerce-info, .woocommerce-error) :is(a, button).button {
+	background-color: #fff;
+	box-shadow: inset 0 0 0 1px var(--lp-line);
+}
+
+/* 10. Classic form fields (login, account details, addresses) -------------- */
+body:is(.woocommerce-account, .woocommerce-checkout, .single-product) .woocommerce form .form-row :is(.input-text, select) {
+	border-color: var(--lp-field);
+	border-radius: var(--lp-radius-input);
+	color: var(--lp-ink);
+}
+
+body:is(.woocommerce-account, .woocommerce-checkout, .single-product) .woocommerce form .form-row :is(.input-text, select):focus {
+	border-color: var(--lp-blue);
+	outline: 2px solid var(--lp-blue);
+	outline-offset: 1px;
+	box-shadow: 0 0 0 4px rgba(15, 92, 216, 0.14);
+}
+
+body:is(.woocommerce-account, .woocommerce-checkout, .single-product) .woocommerce form .form-row label {
+	color: var(--lp-text);
+	font-weight: 600;
+}
+
+/* Native checkboxes and radios in classic forms (Remember me, address forms) */
+body:is(.woocommerce-account, .woocommerce-checkout, .single-product) .woocommerce :is(input[type="checkbox"], input[type="radio"]) {
+	accent-color: var(--lp-blue);
+}
+
+/* 11. My Account ------------------------------------------------------------ */
+body.woocommerce-account .woocommerce-MyAccount-navigation ul {
+	margin: 0 0 24px;
+	padding: 6px;
+	list-style: none;
+	border: 1px solid var(--lp-line);
+	border-radius: var(--lp-radius-card);
+	background: #fff;
+	box-shadow: var(--lp-shadow-card);
+}
+
+body.woocommerce-account .woocommerce-MyAccount-navigation .woocommerce-MyAccount-navigation-link {
+	margin: 0;
+	padding: 0;
+}
+
+body.woocommerce-account .site-main .woocommerce-MyAccount-navigation .woocommerce-MyAccount-navigation-link a {
+	display: block;
+	padding: 11px 14px;
+	border-radius: var(--lp-radius-btn);
+	color: var(--lp-navy);
+	font-weight: 500;
+	text-decoration: none;
+}
+
+body.woocommerce-account .site-main .woocommerce-MyAccount-navigation .woocommerce-MyAccount-navigation-link a:hover {
+	background: var(--lp-surface);
+	color: var(--lp-blue);
+}
+
+body.woocommerce-account .site-main .woocommerce-MyAccount-navigation .woocommerce-MyAccount-navigation-link.is-active a {
+	background: var(--lp-tint);
+	color: var(--lp-blue);
+	font-weight: 700;
+}
+
+body.woocommerce-account .woocommerce form.woocommerce-form-login {
+	border-color: var(--lp-line);
+	border-radius: var(--lp-radius-card);
+	background: #fff;
+	box-shadow: var(--lp-shadow-card);
+}
+
+/* Log in is the main action on the logged-out account page */
+body.woocommerce-account .woocommerce button.button.woocommerce-form-login__submit {
+	background-color: var(--lp-blue);
+	color: #fff;
+}
+
+body.woocommerce-account .woocommerce button.button.woocommerce-form-login__submit:hover {
+	background-color: var(--lp-blue-dark);
+	color: #fff;
+}
+
+body.woocommerce-account .woocommerce-MyAccount-content {
+	color: var(--lp-text);
+	line-height: 1.6;
+}
+
+/* 12. Tables (orders, order details, order received) ------------------------ */
+body:is(.woocommerce-account, .woocommerce-checkout) .woocommerce table.shop_table {
+	border-color: var(--lp-line);
+	border-radius: var(--lp-radius-btn);
+	color: var(--lp-text);
+}
+
+/* Hello Elementor draws a border on all four sides of every cell and grey
+   stripes; WooCommerce draws row rules. Keep only the WooCommerce row rules. */
+body:is(.woocommerce-account, .woocommerce-checkout) .woocommerce table.shop_table :is(th, td) {
+	border-color: var(--lp-line);
+	border-style: solid;
+	border-width: 1px 0 0;
+}
+
+body:is(.woocommerce-account, .woocommerce-checkout) .woocommerce table.shop_table thead tr:first-child :is(th, td),
+body:is(.woocommerce-account, .woocommerce-checkout) .woocommerce table.shop_table tbody:first-child tr:first-child :is(th, td) {
+	border-top-width: 0;
+}
+
+body:is(.woocommerce-account, .woocommerce-checkout) .woocommerce table.shop_table tbody > tr > :is(td, th) {
+	background-color: transparent;
+}
+
+body:is(.woocommerce-account, .woocommerce-checkout) .woocommerce table.shop_table thead th {
+	color: var(--lp-navy);
+}
+
+/* Phones (WooCommerce small screen layout, 768px and below): WooCommerce hides
+   every tbody th in responsive tables, which in My Account, Orders is the
+   order number. Show it like the other cells, label first. */
+@media (max-width: 768px) {
+	body.woocommerce-account .woocommerce table.shop_table_responsive.my_account_orders tbody th {
+		display: block;
+		text-align: right;
+	}
+
+	body.woocommerce-account .woocommerce table.shop_table_responsive.my_account_orders tbody tr:first-child th:first-child {
+		border-top-width: 0;
+	}
+
+	/* Each order is a stack of lines here: the order number line is tinted as
+	   a small header, so one order reads apart from the next */
+	body.woocommerce-account .woocommerce table.shop_table_responsive.my_account_orders tbody > tr > th {
+		background-color: var(--lp-tint);
+	}
+
+	body.woocommerce-account .woocommerce table.shop_table_responsive.my_account_orders tbody th::before {
+		content: attr(data-title) ": ";
+		float: left;
+		font-weight: 700;
+	}
+}
+
+body:is(.woocommerce-account, .woocommerce-checkout) .woocommerce table.shop_table tfoot tr:last-child :is(th, td) {
+	color: var(--lp-navy);
+	font-weight: 700;
+}
+
+/* 13. Order received (classic template, shown on the checkout page) -------- */
+body.woocommerce-order-received .woocommerce-order .woocommerce-thankyou-order-received {
+	margin: 24px 0;
+	padding: 16px 20px;
+	border: 1px solid var(--lp-line);
+	border-left: 4px solid var(--lp-success);
+	border-radius: var(--lp-radius-btn);
+	background: #effaf4;
+	color: var(--lp-navy);
+	font-size: 18px;
+	font-weight: 600;
+}
+
+body.woocommerce-order-received .woocommerce-order ul.woocommerce-order-overview {
+	padding-left: 0;
+	color: var(--lp-muted);
+}
+
+body.woocommerce-order-received .woocommerce-order .woocommerce-order-overview li {
+	border-color: var(--lp-line);
+}
+
+body.woocommerce-order-received .woocommerce-order .woocommerce-order-overview strong {
+	color: var(--lp-navy);
+}
+
+/* Long e-mail addresses must wrap on phones */
+body.woocommerce-order-received .woocommerce-order :is(.woocommerce-order-overview strong, .woocommerce-customer-details address, .woocommerce-customer-details p) {
+	overflow-wrap: anywhere;
+}
+
+/* Phones: one item per line instead of floated items with uneven dividers */
+@media (max-width: 575px) {
+	body.woocommerce-order-received .woocommerce-order ul.woocommerce-order-overview li {
+		float: none;
+		margin: 0 0 12px;
+		padding: 0 0 12px;
+		border-right: 0;
+		border-bottom: 1px dashed var(--lp-line);
+	}
+
+	body.woocommerce-order-received .woocommerce-order ul.woocommerce-order-overview li:last-child {
+		border-bottom: 0;
+	}
+}
+
+/* 14. Single product (classic template) ------------------------------------ */
+body.single-product .site-main .product_title {
+	color: var(--lp-navy);
+	font-weight: 700;
+	letter-spacing: -0.02em;
+}
+
+body.single-product .woocommerce-breadcrumb {
+	padding-top: 24px;
+	color: var(--lp-muted);
+}
+
+body.single-product.woocommerce div.product form.cart .single_add_to_cart_button.button {
+	padding: 14px 28px;
+	font-size: 17px;
+	font-weight: 700;
+}
+
+body.single-product.woocommerce div.product :is(p.price, span.price) {
+	color: var(--lp-navy);
+	font-weight: 700;
+}
+
+body.single-product .woocommerce-product-details__short-description {
+	color: var(--lp-text);
+}
+
+/* Tabs: brand colours instead of the WooCommerce lavender (#e9e6ed, #cfc8d8).
+   The curved corner pieces (li::before and li::after) use that lavender too,
+   so they are hidden; the tabs keep their shape and position. */
+body.single-product.woocommerce div.product .woocommerce-tabs ul.tabs li {
+	border-color: var(--lp-line);
+	background-color: var(--lp-surface);
+}
+
+body.single-product.woocommerce div.product .woocommerce-tabs ul.tabs li.active {
+	border-bottom-color: #fff;
+	background-color: #fff;
+}
+
+body.single-product.woocommerce div.product .woocommerce-tabs ul.tabs li::before,
+body.single-product.woocommerce div.product .woocommerce-tabs ul.tabs li::after {
+	display: none;
+}
+
+body.single-product.woocommerce div.product .woocommerce-tabs ul.tabs::before {
+	border-bottom-color: var(--lp-line);
+}
+
+body.single-product.woocommerce div.product .woocommerce-tabs ul.tabs li a {
+	color: var(--lp-muted);
+	text-decoration: none;
+}
+
+body.single-product.woocommerce div.product .woocommerce-tabs ul.tabs li.active a {
+	color: var(--lp-navy);
+}
+
+body.single-product .product_meta {
+	color: var(--lp-muted);
+	font-size: 14px;
+}
+
+body.single-product.woocommerce span.onsale {
+	background-color: var(--lp-blue);
+	color: #fff;
+}
+
+/* 15. Ledger Plus Shop plugin output (thank-you page, My Account dashboard) -- */
+/* Markup printed by the ledgerplus-shop plugin: .lp-shop-thankyou with the
+   "What happens next" steps (.lp-shop-next) and the referral code box
+   (.lp-shop-referral), and .lp-shop-account on the account dashboard. */
+body:is(.woocommerce-checkout, .woocommerce-account) .lp-shop.lp-shop-thankyou {
+	margin: 0 0 32px;
+}
+
+body:is(.woocommerce-checkout, .woocommerce-account) .lp-shop-next {
+	margin: 0 0 20px;
+	padding: 24px;
+	border: 1px solid var(--lp-line);
+	border-radius: var(--lp-radius-card);
+	background: #fff;
+	box-shadow: var(--lp-shadow-card);
+	color: var(--lp-text);
+	font-family: var(--lp-font);
+}
+
+body:is(.woocommerce-checkout, .woocommerce-account) .site-main h2.lp-shop-next__title {
+	margin: 0 0 12px;
+	color: var(--lp-navy);
+	font-size: 24px;
+	line-height: 1.25;
+}
+
+body:is(.woocommerce-checkout, .woocommerce-account) .lp-shop-next__intro {
+	margin: 0 0 12px;
+	color: var(--lp-text);
+	font-weight: 600;
+}
+
+body:is(.woocommerce-checkout, .woocommerce-account) .lp-shop-next__steps {
+	margin: 0 0 16px;
+	padding: 0;
+	list-style: none;
+}
+
+body:is(.woocommerce-checkout, .woocommerce-account) .lp-shop-next__step {
+	display: flex;
+	align-items: flex-start;
+	gap: 12px;
+	margin: 0 0 12px;
+	line-height: 1.5;
+}
+
+body:is(.woocommerce-checkout, .woocommerce-account) .lp-shop-next__num {
+	flex: 0 0 28px;
+	height: 28px;
+	border-radius: 50%;
+	background: var(--lp-tint);
+	color: var(--lp-blue);
+	font-size: 14px;
+	font-weight: 700;
+	line-height: 28px;
+	text-align: center;
+}
+
+body:is(.woocommerce-checkout, .woocommerce-account) .lp-shop-next__text {
+	padding-top: 2px;
+}
+
+body:is(.woocommerce-checkout, .woocommerce-account) .lp-shop-referral {
+	margin: 0 0 24px;
+	padding: 16px 20px;
+	border: 1px solid var(--lp-line);
+	border-left: 4px solid var(--lp-blue);
+	border-radius: var(--lp-radius-btn);
+	background: var(--lp-tint);
+	color: var(--lp-ink);
+	font-family: var(--lp-font);
+	line-height: 1.6;
+}
+
+body:is(.woocommerce-checkout, .woocommerce-account) .lp-shop-referral__text {
+	margin: 0;
+	overflow-wrap: anywhere;
+}
+
+body:is(.woocommerce-checkout, .woocommerce-account) .lp-shop-referral__text + .lp-shop-referral__text {
+	margin-top: 8px;
+}
+
+body:is(.woocommerce-checkout, .woocommerce-account) .lp-shop-referral__code {
+	padding: 1px 8px;
+	border: 1px dashed var(--lp-blue);
+	border-radius: 6px;
+	background: #fff;
+	color: var(--lp-navy);
+	font-weight: 700;
+	letter-spacing: 0.04em;
+	white-space: nowrap;
+}
+
+body:is(.woocommerce-checkout, .woocommerce-account) .lp-shop-referral--pending {
+	border-left-color: var(--lp-muted);
+	background: var(--lp-surface);
+	color: var(--lp-text);
+}
+
+body:is(.woocommerce-checkout, .woocommerce-account) .lp-shop-thankyou--closed .lp-shop-help {
+	margin: 0 0 24px;
+}
+
+/* 16. Motion preference ------------------------------------------------------ */
+/* The transitions this file adds are repeated here with the same selectors,
+   so the reduced-motion rule always outweighs them. */
+@media (prefers-reduced-motion: reduce) {
+	body:is(.woocommerce-cart, .woocommerce-checkout, .woocommerce-account, .single-product) .site-main * {
+		transition: none;
+	}
+
+	body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-block-components-text-input :is(input[type="text"], input[type="email"], input[type="tel"], input[type="number"], input[type="password"], input[type="url"], input[type="date"]),
+	body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) .wc-blocks-components-select .wc-blocks-components-select__select,
+	body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) textarea.wc-block-components-textarea,
+	body:is(.woocommerce-cart, .woocommerce-checkout) :is(.wp-block-woocommerce-cart, .wp-block-woocommerce-checkout) :is(.wc-block-components-checkout-place-order-button, .wc-block-cart__submit-button).wc-block-components-button {
+		transition: none;
+	}
+}

@@ -1,0 +1,204 @@
+<style>
+.elementor-widget.lp-dl-w{margin-top:64px}
+@media (max-width:1024px){.elementor-widget.lp-dl-w{margin-top:48px}}
+@media (max-width:767px){.elementor-widget.lp-dl-w{margin-top:36px}}
+.lp-dl{--lp-dl-line:rgba(255,255,255,.1);position:relative;box-sizing:border-box;width:100%;margin:0;padding:22px 28px 26px;border:1px solid rgba(255,255,255,.08);border-radius:18px;background:rgba(26,32,58,.62);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);font-family:'DM Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#fff;text-align:left}
+.lp-dl *{box-sizing:border-box}
+.lp-dl [hidden]{display:none!important}
+.lp-dl h2.lp-dl__eyebrow{margin:0 0 18px;padding:0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;font-size:12px;font-weight:500;line-height:1.4;letter-spacing:.22em;text-transform:uppercase;color:#8fb8ff}
+.lp-dl__grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0}
+.lp-dl__col{min-width:0;padding:0 24px 0 0}
+.lp-dl__col+.lp-dl__col{padding:0 0 0 24px;border-left:1px solid var(--lp-dl-line)}
+.lp-dl p.lp-dl__seg{margin:0 0 6px;padding:0;font-size:14px;font-weight:500;line-height:1.4;color:#c7d6f5}
+.lp-dl h3.lp-dl__title{margin:0 0 16px;padding:0;font-family:inherit;font-size:20px;font-weight:700;line-height:1.3;letter-spacing:-.01em;color:#fff;text-wrap:balance}
+.lp-dl__nw,.lp-dl__title time{white-space:nowrap}
+.lp-dl__row{display:flex;flex-wrap:wrap;align-items:center;gap:14px 20px;min-height:54px}
+.lp-dl__timer{display:flex;gap:7px;margin:0}
+.lp-dl__box{display:flex;flex-direction:column;align-items:center;justify-content:center;width:64px;min-width:0;height:54px;padding:0 6px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(255,255,255,.07)}
+.lp-dl__num{display:block;font-size:22px;font-weight:700;line-height:1.1;white-space:nowrap;color:#fff}
+.lp-dl__dg{display:inline-block;width:.62em;text-align:center}
+.lp-dl__unit{display:block;margin-top:3px;font-size:9.5px;font-weight:600;line-height:1;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;color:#9fb3dd}
+.lp-dl a.lp-dl__link{display:inline-flex;align-items:center;gap:8px;padding:6px 0;font-size:15px;font-weight:600;line-height:1.35;color:#fff;text-decoration:underline;text-decoration-color:rgba(255,255,255,.45);text-underline-offset:4px;text-decoration-thickness:1px;transition:color .2s,text-decoration-color .2s}
+.lp-dl a.lp-dl__link:hover,.lp-dl a.lp-dl__link:focus-visible{color:#8fb8ff;text-decoration-color:#8fb8ff}
+.lp-dl a.lp-dl__link:focus-visible{outline:2px solid #8fb8ff;outline-offset:3px;border-radius:4px}
+.lp-dl__link svg{flex:none;width:14px;height:14px;transition:transform .2s}
+.lp-dl a.lp-dl__link:hover svg{transform:translateX(3px)}
+.lp-dl p.lp-dl__then{margin:14px 0 0;padding:0;font-size:13.5px;line-height:1.45;color:#a9b9da}
+.lp-dl__then strong{margin:0 2px;font-weight:700;color:#fff}
+.lp-dl p.lp-dl__live{display:inline-flex;align-items:center;gap:8px;height:36px;margin:0;padding:0 14px;border-radius:999px;background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.35);font-size:13.5px;font-weight:600;line-height:1.3;white-space:nowrap;color:#bbf7d0}
+.lp-dl__live::before{content:'';flex:none;width:8px;height:8px;border-radius:50%;background:#4ade80}
+.lp-dl__sr{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+@media (min-width:1025px) and (max-width:1199px){
+.lp-dl__row{flex-direction:column;align-items:flex-start;gap:12px}
+.lp-dl p.lp-dl__live{margin:9px 0}
+}
+@media (max-width:1024px){
+.lp-dl{padding:22px 22px 24px}
+.lp-dl__grid{grid-template-columns:minmax(0,1fr)}
+.lp-dl__col{padding:0}
+.lp-dl__col+.lp-dl__col{margin-top:22px;padding:22px 0 0;border-left:0;border-top:1px solid var(--lp-dl-line)}
+}
+@media (max-width:767px){
+.lp-dl{padding:18px 16px 20px;border-radius:16px}
+.lp-dl h2.lp-dl__eyebrow{margin-bottom:14px;font-size:11px;letter-spacing:.16em}
+.lp-dl h3.lp-dl__title{margin-bottom:14px;font-size:18px}
+.lp-dl p.lp-dl__seg{font-size:13px}
+.lp-dl__row{flex-direction:column;align-items:flex-start;gap:12px;min-height:0}
+.lp-dl__timer{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;align-self:stretch;max-width:360px}
+.lp-dl__box{width:auto;height:58px;padding:0 4px}
+.lp-dl__unit{font-size:9px;letter-spacing:.06em}
+.lp-dl a.lp-dl__link{font-size:14.5px}
+.lp-dl p.lp-dl__then{font-size:13px}
+}
+@media (max-width:360px){.lp-dl h2.lp-dl__eyebrow{font-size:10.5px;letter-spacing:.1em}}
+@media (prefers-reduced-motion:reduce){.lp-dl a.lp-dl__link,.lp-dl__link svg{transition:none}.lp-dl a.lp-dl__link:hover svg{transform:none}}
+</style>
+<section class="lp-dl" aria-label="UAE e-invoicing deadlines" data-lp-dl>
+<h2 class="lp-dl__eyebrow">UAE e-invoicing &middot; Next deadlines</h2>
+<div class="lp-dl__grid">
+<div class="lp-dl__col" data-lp-dl-card>
+<p class="lp-dl__seg">Revenue AED 50m or more</p>
+<div data-lp-dl-phase data-until="2027-01-01T00:00:00+04:00"><h3 class="lp-dl__title"><span class="lp-dl__nw">Start issuing e-invoices</span> from <time datetime="2027-01-01">Jan 1, 2027</time></h3></div>
+<div data-lp-dl-phase data-live hidden><h3 class="lp-dl__title"><span class="lp-dl__nw">E-invoicing</span> is now mandatory</h3></div>
+<div class="lp-dl__row">
+<div class="lp-dl__timer" role="timer" aria-live="off" data-lp-dl-timer>
+<div class="lp-dl__box" aria-hidden="true"><span class="lp-dl__num" data-u="d">--</span><span class="lp-dl__unit">Days</span></div>
+<div class="lp-dl__box" aria-hidden="true"><span class="lp-dl__num" data-u="h">--</span><span class="lp-dl__unit">Hours</span></div>
+<div class="lp-dl__box" aria-hidden="true"><span class="lp-dl__num" data-u="m">--</span><span class="lp-dl__unit">Minutes</span></div>
+<div class="lp-dl__box" aria-hidden="true"><span class="lp-dl__num" data-u="s">--</span><span class="lp-dl__unit">Seconds</span></div>
+<span class="lp-dl__sr" data-lp-dl-sr></span>
+</div>
+<p class="lp-dl__live" data-lp-dl-live hidden>In effect since Jan 1, 2027</p>
+<a class="lp-dl__link" href="#elementor-action%3Aaction%3Dpopup%3Aopen%26settings%3DeyJpZCI6IjUzMiIsInRvZ2dsZSI6ZmFsc2V9" data-lp-dl-popup="532">Switch to LedgerPlus<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+</div>
+</div>
+<div class="lp-dl__col" data-lp-dl-card>
+<p class="lp-dl__seg">Revenue under AED 50m</p>
+<div data-lp-dl-phase data-until="2027-04-01T00:00:00+04:00"><h3 class="lp-dl__title">Appoint your ASP by <time datetime="2027-03-31">Mar 31, 2027</time></h3></div>
+<div data-lp-dl-phase data-until="2027-07-01T00:00:00+04:00" hidden><h3 class="lp-dl__title"><span class="lp-dl__nw">Start issuing e-invoices</span> from <time datetime="2027-07-01">Jul 1, 2027</time></h3></div>
+<div data-lp-dl-phase data-live hidden><h3 class="lp-dl__title"><span class="lp-dl__nw">E-invoicing</span> is now mandatory</h3></div>
+<div class="lp-dl__row">
+<div class="lp-dl__timer" role="timer" aria-live="off" data-lp-dl-timer>
+<div class="lp-dl__box" aria-hidden="true"><span class="lp-dl__num" data-u="d">--</span><span class="lp-dl__unit">Days</span></div>
+<div class="lp-dl__box" aria-hidden="true"><span class="lp-dl__num" data-u="h">--</span><span class="lp-dl__unit">Hours</span></div>
+<div class="lp-dl__box" aria-hidden="true"><span class="lp-dl__num" data-u="m">--</span><span class="lp-dl__unit">Minutes</span></div>
+<div class="lp-dl__box" aria-hidden="true"><span class="lp-dl__num" data-u="s">--</span><span class="lp-dl__unit">Seconds</span></div>
+<span class="lp-dl__sr" data-lp-dl-sr></span>
+</div>
+<p class="lp-dl__live" data-lp-dl-live hidden>In effect since Jul 1, 2027</p>
+<a class="lp-dl__link" href="#elementor-action%3Aaction%3Dpopup%3Aopen%26settings%3DeyJpZCI6IjUzMiIsInRvZ2dsZSI6ZmFsc2V9" data-lp-dl-popup="532">Get ready with LedgerPlus<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+</div>
+<p class="lp-dl__then" data-lp-dl-then>Then <strong>Jul 1, 2027</strong> <span class="lp-dl__nw">Start issuing e-invoices</span></p>
+</div>
+</div>
+</section>
+<script>
+(function(){
+  if (window.lpDlInit) { window.lpDlInit(); return; }
+  var UNITS = {d:['day','days'],h:['hour','hours'],m:['minute','minutes']};
+  function pad(n){ return n < 10 ? '0' + n : String(n); }
+  function qty(n, u){ return n + ' ' + UNITS[u][n === 1 ? 0 : 1]; }
+  function setup(card){
+    if (card.__lpDl) return card.__lpDl;
+    var phases = [].slice.call(card.querySelectorAll('[data-lp-dl-phase]'));
+    var st = {
+      card: card,
+      timed: phases.filter(function(p){ return p.hasAttribute('data-until'); }).map(function(p){ return {el:p, t:Date.parse(p.getAttribute('data-until'))}; }).filter(function(x){ return !isNaN(x.t); }),
+      live: phases.filter(function(p){ return p.hasAttribute('data-live'); })[0] || null,
+      timer: card.querySelector('[data-lp-dl-timer]'),
+      liveNote: card.querySelector('[data-lp-dl-live]'),
+      then: card.querySelector('[data-lp-dl-then]'),
+      sr: card.querySelector('[data-lp-dl-sr]'),
+      nums: {},
+      lastIdx: -2, lastLabelMin: -1
+    };
+    ['d','h','m','s'].forEach(function(u){
+      var n = card.querySelector('[data-u="' + u + '"]');
+      st.nums[u] = n ? {el:n, v:null} : null;
+    });
+    card.__lpDl = st;
+    return st;
+  }
+  function setNum(st, u, text){
+    var x = st.nums[u];
+    if (!x || x.v === text) return;
+    /* one fixed-width slot per digit: DM Sans has no tabular figures */
+    x.el.innerHTML = text.replace(/\d/g, '<span class="lp-dl__dg">$&</span>');
+    x.v = text;
+  }
+  function tick(st, now){
+    var idx = -1;
+    for (var i = 0; i < st.timed.length; i++){ if (st.timed[i].t > now){ idx = i; break; } }
+    if (idx !== st.lastIdx){
+      st.timed.forEach(function(p, i){ p.el.hidden = (i !== idx); });
+      if (st.live) st.live.hidden = (idx !== -1);
+      if (st.timer) st.timer.hidden = (idx === -1);
+      if (st.liveNote) st.liveNote.hidden = (idx !== -1);
+      if (st.then) st.then.hidden = (idx !== 0);
+      if (st.sr && idx === -1) st.sr.textContent = '';
+      st.lastIdx = idx; st.lastLabelMin = -1;
+    }
+    if (idx === -1) return false;
+    var diff = Math.max(0, Math.floor((st.timed[idx].t - now) / 1000));
+    var d = Math.floor(diff / 86400), h = Math.floor(diff % 86400 / 3600), m = Math.floor(diff % 3600 / 60), s = diff % 60;
+    setNum(st, 'd', String(d));
+    setNum(st, 'h', pad(h));
+    setNum(st, 'm', pad(m));
+    setNum(st, 's', pad(s));
+    var minuteKey = Math.floor(diff / 60);
+    if (st.sr && minuteKey !== st.lastLabelMin){
+      st.lastLabelMin = minuteKey;
+      var ttl = st.timed[idx].el.textContent.replace(/\s+/g, ' ').trim(), left;
+      if (diff < 60){ left = 'Less than a minute left'; }
+      else {
+        var parts = [];
+        if (d) parts.push(qty(d, 'd'));
+        if (d || h) parts.push(qty(h, 'h'));
+        parts.push(qty(m, 'm'));
+        left = (parts.length > 1 ? parts.slice(0, -1).join(', ') + ' and ' + parts[parts.length - 1] : parts[0]) + ' left';
+      }
+      st.sr.textContent = left + '. ' + ttl + '.';
+    }
+    return true;
+  }
+  var cards = [], timerId = null;
+  function run(){
+    var now = Date.now(), any = false;
+    cards = cards.filter(function(st){ return st.card.isConnected !== false; });
+    for (var i = 0; i < cards.length; i++){ if (tick(cards[i], now)) any = true; }
+    return any;
+  }
+  /* tick just after each wall-clock second so the seconds digit never skips */
+  function loop(){
+    timerId = null;
+    if (run()) timerId = setTimeout(loop, 1020 - Date.now() % 1000);
+  }
+  function start(){
+    cards = [].slice.call(document.querySelectorAll('[data-lp-dl] [data-lp-dl-card]')).map(setup);
+    if (!cards.length) return;
+    if (timerId === null) loop(); else run();
+  }
+  document.addEventListener('visibilitychange', function(){
+    if (document.hidden || !cards.length) return;
+    if (timerId !== null) clearTimeout(timerId);
+    loop();
+  });
+  /* The href is Elementor's native popup action, so Elementor opens popup 532 itself.
+     This only steps in if Elementor's link handler did not run (it calls preventDefault). */
+  window.addEventListener('click', function(e){
+    if (e.defaultPrevented || e.button) return;
+    var a = e.target && e.target.closest ? e.target.closest('a[data-lp-dl-popup]') : null;
+    if (!a) return;
+    var fe = window.elementorFrontend;
+    if (fe && typeof fe.isEditMode === 'function' && fe.isEditMode()) return;
+    var pro = window.elementorProFrontend;
+    if (pro && pro.modules && pro.modules.popup && typeof pro.modules.popup.showPopup === 'function'){
+      e.preventDefault();
+      pro.modules.popup.showPopup({id: parseInt(a.getAttribute('data-lp-dl-popup'), 10)});
+    }
+  });
+  window.lpDlInit = start;
+  start();
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
+})();
+</script>

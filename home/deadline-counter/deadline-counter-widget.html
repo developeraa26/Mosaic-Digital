@@ -1,16 +1,16 @@
 <style>
-.elementor-widget.lp-dl-w{margin-top:64px}
-@media (max-width:1024px){.elementor-widget.lp-dl-w{margin-top:48px}}
-@media (max-width:767px){.elementor-widget.lp-dl-w{margin-top:36px}}
+.elementor-widget.lp-dl-w{margin:0 0 56px}
+@media (max-width:1024px){.elementor-widget.lp-dl-w{margin:0 0 40px}}
+@media (max-width:767px){.elementor-widget.lp-dl-w{margin:0 0 28px}}
 .lp-dl{--lp-dl-line:rgba(255,255,255,.1);position:relative;box-sizing:border-box;width:100%;margin:0;padding:22px 28px 26px;border:1px solid rgba(255,255,255,.08);border-radius:18px;background:rgba(26,32,58,.62);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);font-family:'DM Sans',ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;color:#fff;text-align:left}
 .lp-dl *{box-sizing:border-box}
 .lp-dl [hidden]{display:none!important}
-.lp-dl h2.lp-dl__eyebrow{margin:0 0 18px;padding:0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;font-size:12px;font-weight:500;line-height:1.4;letter-spacing:.22em;text-transform:uppercase;color:#8fb8ff}
+.lp-dl p.lp-dl__eyebrow{margin:0 0 18px;padding:0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,'Liberation Mono',monospace;font-size:12px;font-weight:500;line-height:1.4;letter-spacing:.22em;text-transform:uppercase;color:#8fb8ff}
 .lp-dl__grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:0}
 .lp-dl__col{min-width:0;padding:0 24px 0 0}
 .lp-dl__col+.lp-dl__col{padding:0 0 0 24px;border-left:1px solid var(--lp-dl-line)}
 .lp-dl p.lp-dl__seg{margin:0 0 6px;padding:0;font-size:14px;font-weight:500;line-height:1.4;color:#c7d6f5}
-.lp-dl h3.lp-dl__title{margin:0 0 16px;padding:0;font-family:inherit;font-size:20px;font-weight:700;line-height:1.3;letter-spacing:-.01em;color:#fff;text-wrap:balance}
+.lp-dl p.lp-dl__title{margin:0 0 16px;padding:0;font-family:inherit;font-size:20px;font-weight:700;line-height:1.3;letter-spacing:-.01em;color:#fff;text-wrap:balance}
 .lp-dl__nw,.lp-dl__title time{white-space:nowrap}
 .lp-dl__row{display:flex;flex-wrap:wrap;align-items:center;gap:14px 20px;min-height:54px}
 .lp-dl__timer{display:flex;gap:7px;margin:0}
@@ -39,27 +39,29 @@
 .lp-dl__col+.lp-dl__col{margin-top:22px;padding:22px 0 0;border-left:0;border-top:1px solid var(--lp-dl-line)}
 }
 @media (max-width:767px){
-.lp-dl{padding:18px 16px 20px;border-radius:16px}
-.lp-dl h2.lp-dl__eyebrow{margin-bottom:14px;font-size:11px;letter-spacing:.16em}
-.lp-dl h3.lp-dl__title{margin-bottom:14px;font-size:18px}
+.lp-dl{padding:16px 14px 16px;border-radius:16px}
+.lp-dl p.lp-dl__eyebrow{margin-bottom:12px;font-size:11px;letter-spacing:.16em}
+.lp-dl p.lp-dl__title{margin-bottom:10px;font-size:17px}
+.lp-dl__col+.lp-dl__col{margin-top:16px;padding-top:16px}
 .lp-dl p.lp-dl__seg{font-size:13px}
-.lp-dl__row{flex-direction:column;align-items:flex-start;gap:12px;min-height:0}
+.lp-dl__row{flex-direction:column;align-items:flex-start;gap:8px;min-height:0}
 .lp-dl__timer{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;align-self:stretch;max-width:360px}
-.lp-dl__box{width:auto;height:58px;padding:0 4px}
+.lp-dl__box{width:auto;height:52px;padding:0 4px}
+.lp-dl__num{font-size:20px}
 .lp-dl__unit{font-size:9px;letter-spacing:.06em}
 .lp-dl a.lp-dl__link{font-size:14.5px}
-.lp-dl p.lp-dl__then{font-size:13px}
+.lp-dl p.lp-dl__then{margin-top:8px;font-size:13px}
 }
-@media (max-width:360px){.lp-dl h2.lp-dl__eyebrow{font-size:10.5px;letter-spacing:.1em}}
+@media (max-width:360px){.lp-dl p.lp-dl__eyebrow{font-size:10.5px;letter-spacing:.1em}}
 @media (prefers-reduced-motion:reduce){.lp-dl a.lp-dl__link,.lp-dl__link svg{transition:none}.lp-dl a.lp-dl__link:hover svg{transform:none}}
 </style>
 <section class="lp-dl" aria-label="UAE e-invoicing deadlines" data-lp-dl>
-<h2 class="lp-dl__eyebrow">UAE e-invoicing &middot; Next deadlines</h2>
+<p class="lp-dl__eyebrow">UAE e-invoicing &middot; Next deadlines</p>
 <div class="lp-dl__grid">
 <div class="lp-dl__col" data-lp-dl-card>
 <p class="lp-dl__seg">Revenue AED 50m or more</p>
-<div data-lp-dl-phase data-until="2027-01-01T00:00:00+04:00"><h3 class="lp-dl__title"><span class="lp-dl__nw">Start issuing e-invoices</span> from <time datetime="2027-01-01">Jan 1, 2027</time></h3></div>
-<div data-lp-dl-phase data-live hidden><h3 class="lp-dl__title"><span class="lp-dl__nw">E-invoicing</span> is now mandatory</h3></div>
+<div data-lp-dl-phase data-until="2027-01-01T00:00:00+04:00"><p class="lp-dl__title"><span class="lp-dl__nw">Start issuing e-invoices</span> from <time datetime="2027-01-01">Jan 1, 2027</time></p></div>
+<div data-lp-dl-phase data-live hidden><p class="lp-dl__title"><span class="lp-dl__nw">E-invoicing</span> is now mandatory</p></div>
 <div class="lp-dl__row">
 <div class="lp-dl__timer" role="timer" aria-live="off" data-lp-dl-timer>
 <div class="lp-dl__box" aria-hidden="true"><span class="lp-dl__num" data-u="d">--</span><span class="lp-dl__unit">Days</span></div>
@@ -74,9 +76,9 @@
 </div>
 <div class="lp-dl__col" data-lp-dl-card>
 <p class="lp-dl__seg">Revenue under AED 50m</p>
-<div data-lp-dl-phase data-until="2027-04-01T00:00:00+04:00"><h3 class="lp-dl__title">Appoint your ASP by <time datetime="2027-03-31">Mar 31, 2027</time></h3></div>
-<div data-lp-dl-phase data-until="2027-07-01T00:00:00+04:00" hidden><h3 class="lp-dl__title"><span class="lp-dl__nw">Start issuing e-invoices</span> from <time datetime="2027-07-01">Jul 1, 2027</time></h3></div>
-<div data-lp-dl-phase data-live hidden><h3 class="lp-dl__title"><span class="lp-dl__nw">E-invoicing</span> is now mandatory</h3></div>
+<div data-lp-dl-phase data-until="2027-04-01T00:00:00+04:00"><p class="lp-dl__title">Appoint your ASP by <time datetime="2027-03-31">Mar 31, 2027</time></p></div>
+<div data-lp-dl-phase data-until="2027-07-01T00:00:00+04:00" hidden><p class="lp-dl__title"><span class="lp-dl__nw">Start issuing e-invoices</span> from <time datetime="2027-07-01">Jul 1, 2027</time></p></div>
+<div data-lp-dl-phase data-live hidden><p class="lp-dl__title"><span class="lp-dl__nw">E-invoicing</span> is now mandatory</p></div>
 <div class="lp-dl__row">
 <div class="lp-dl__timer" role="timer" aria-live="off" data-lp-dl-timer>
 <div class="lp-dl__box" aria-hidden="true"><span class="lp-dl__num" data-u="d">--</span><span class="lp-dl__unit">Days</span></div>

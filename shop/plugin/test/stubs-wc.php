@@ -65,6 +65,8 @@ class LP_Test_Logger {
 	private function put( $level, $m, $ctx ) {
 		if ( 'ledgerplus-geidea' === ( $ctx['source'] ?? '' ) ) {
 			$GLOBALS['lp_test']['glogs'][] = $level . ': ' . $m;
+		} elseif ( 'ledgerplus-zoho' === ( $ctx['source'] ?? '' ) ) {
+			$GLOBALS['lp_test']['zlogs'][] = $level . ': ' . $m; // F14
 		} else {
 			$GLOBALS['lp_test']['logs'][] = $m;
 		}
@@ -133,6 +135,32 @@ class LP_Test_Item {
 		return $this->pid;
 	}
 }
+/* F14: a line item with the WC_Order_Item_Product getters the Zoho sync reads (name, quantity, totals). */
+class LP_Test_Line_Item extends LP_Test_Item {
+	private $name;
+	private $qty;
+	private $line_total;
+	private $line_tax;
+	public function __construct( $pid, $name, $qty, $total, $tax ) {
+		parent::__construct( $pid );
+		$this->name       = $name;
+		$this->qty        = $qty;
+		$this->line_total = $total;
+		$this->line_tax   = $tax;
+	}
+	public function get_name( $context = 'view' ) {
+		return $this->name;
+	}
+	public function get_quantity() {
+		return $this->qty;
+	}
+	public function get_total( $context = 'view' ) {
+		return $this->line_total;
+	}
+	public function get_total_tax( $context = 'view' ) {
+		return $this->line_tax;
+	}
+}
 
 class WC_Order extends WC_Data {
 	public $billing_email  = '';
@@ -186,6 +214,16 @@ class WC_Order extends WC_Data {
 	}
 	public function get_billing_last_name( $context = 'view' ) {
 		return $GLOBALS['lp_test']['orders'][ $this->id ]['last_name'] ?? '';
+	}
+	/* F14 */
+	public function get_billing_company( $context = 'view' ) {
+		return $GLOBALS['lp_test']['orders'][ $this->id ]['company'] ?? '';
+	}
+	public function get_customer_note( $context = 'view' ) {
+		return $GLOBALS['lp_test']['orders'][ $this->id ]['customer_note'] ?? '';
+	}
+	public function get_total_tax( $context = 'view' ) {
+		return $GLOBALS['lp_test']['orders'][ $this->id ]['total_tax'] ?? '0';
 	}
 	public function get_payment_method_title( $context = 'view' ) {
 		return 'geidea' === $this->payment_method ? 'Geidea Online Payments' : $this->payment_method;
@@ -307,6 +345,15 @@ class WC_Order extends WC_Data {
 		return $this->billing_email;
 	}
 	public function get_items( $types = 'line_item' ) {
+		$lines = $GLOBALS['lp_test']['orders'][ $this->id ]['lines'] ?? null; // F14: full line items when a test gives them.
+		if ( is_array( $lines ) ) {
+			return array_map(
+				function ( $l ) {
+					return new LP_Test_Line_Item( $l[0], $l[1], $l[2], $l[3], $l[4] );
+				},
+				$lines
+			);
+		}
 		return array_map(
 			function ( $pid ) {
 				return new LP_Test_Item( $pid );

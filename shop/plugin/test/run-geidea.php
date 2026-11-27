@@ -81,6 +81,16 @@ function http_calls() {
 function pending_checks( $id ) {
 	return count( array_filter( $GLOBALS['lp_test']['as'] ?? array(), function ( $a ) use ( $id ) { return 'pending' === $a['status'] && $id === ( $a['args']['order_id'] ?? 0 ); } ) );
 }
+/** How often LP_Shop::$method is hooked on $tag (F14 adds its own callbacks to some of the same hooks). */
+function hooked( $tag, $method ) {
+	$n = 0;
+	foreach ( $GLOBALS['lp_test']['filters'][ $tag ] ?? array() as $cbs ) {
+		foreach ( $cbs as $entry ) {
+			$n += ( array( 'LP_Shop', $method ) === $entry[0] ) ? 1 : 0;
+		}
+	}
+	return $n;
+}
 function glog_lines( $needle ) {
 	return array_values( array_filter( $GLOBALS['lp_test']['glogs'] ?? array(), function ( $l ) use ( $needle ) { return false !== strpos( $l, $needle ); } ) );
 }
@@ -120,13 +130,13 @@ check( 'https API base accepted without the trailing slash', 'https://api.geidea
 settings_filter( array() );
 check( 'callback guard on woocommerce_api_request at priority 1', isset( $GLOBALS['lp_test']['filters']['woocommerce_api_request'][1] ) );
 check( 'thank-you check on template_redirect at priority 1 (before F6 at 5)', isset( $GLOBALS['lp_test']['filters']['template_redirect'][1] ) && isset( $GLOBALS['lp_test']['filters']['template_redirect'][5] ) );
-check( 'scheduling on classic and Store API checkout and on woocommerce_payment_successful_result (not before_pay_action); Action Scheduler callback with 2 args', 1 === lp_test_hook_count( 'woocommerce_checkout_order_processed' ) && 1 === lp_test_hook_count( 'woocommerce_store_api_checkout_order_processed' ) && 0 === lp_test_hook_count( 'woocommerce_before_pay_action' ) && 2 === ( $GLOBALS['lp_test']['filters']['woocommerce_payment_successful_result'][20][0][1] ?? 0 ) && 2 === $GLOBALS['lp_test']['filters']['lp_shop_geidea_check'][10][0][1] );
+check( 'scheduling on classic and Store API checkout and on woocommerce_payment_successful_result (not before_pay_action); Action Scheduler callback with 2 args', 1 === hooked( 'woocommerce_checkout_order_processed', 'on_checkout_order_processed' ) && 1 === hooked( 'woocommerce_store_api_checkout_order_processed', 'schedule_geidea_checks' ) && 0 === lp_test_hook_count( 'woocommerce_before_pay_action' ) && 2 === ( $GLOBALS['lp_test']['filters']['woocommerce_payment_successful_result'][20][0][1] ?? 0 ) && 2 === $GLOBALS['lp_test']['filters']['lp_shop_geidea_check'][10][0][1] );
 if ( $is_plugin ) {
 	check( 'plugin: deactivation hook registered for its own file', 1 === count( $GLOBALS['lp_test']['deactivation'] ?? array() ) && 'ledgerplus-shop.php' === $GLOBALS['lp_test']['deactivation'][0][0] );
 } else {
 	check( 'snippet: no deactivation hook (it needs a plugin file)', ! isset( $GLOBALS['lp_test']['deactivation'] ) );
 }
-check( 'order action filter and handler', 1 === lp_test_hook_count( 'woocommerce_order_actions' ) && 1 === lp_test_hook_count( 'woocommerce_order_action_lp_shop_geidea_check' ) );
+check( 'order action filter and handler', 1 === hooked( 'woocommerce_order_actions', 'filter_order_actions' ) && 1 === lp_test_hook_count( 'woocommerce_order_action_lp_shop_geidea_check' ) );
 $envs = array( 'UAE-PROD' => 'https://api.geidea.ae', 'KSA-PROD' => 'https://api.ksamerchant.geidea.net', 'EGY-PROD' => 'https://api.merchant.geidea.net', 'TEST' => '' );
 $ok   = true;
 foreach ( $envs as $env => $host ) {

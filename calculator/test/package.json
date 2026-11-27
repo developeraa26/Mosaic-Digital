@@ -1,0 +1,10 @@
+{
+  "name": "ledgerplus-calculator-tests",
+  "private": true,
+  "description": "Test tooling for the Ledger Plus package calculator (UI harness and JS parity).",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "intl-tel-input": "17.0.21",
+    "jquery": "3.7.1"
+  }
+}

@@ -1,0 +1,21 @@
+.elementor-field-textual{line-height:1.4;font-size:15px;min-height:40px;padding:5px 14px;border-radius:3px}
+.elementor-field-textual.elementor-size-md{font-size:16px;min-height:47px;padding:6px 16px;border-radius:4px}
+.elementor-button-align-stretch .elementor-field-type-submit:not(.e-form__buttons__wrapper) .elementor-button{flex-basis:100%}
+.elementor-message{margin:10px 0;font-size:1em;line-height:1}
+.elementor-form .elementor-button{padding-block-start:0;padding-block-end:0;border:none}
+.elementor-form .elementor-button > span,.elementor-form .elementor-button-content-wrapper{display:flex;justify-content:center;flex-direction:row;gap:5px}
+.elementor-form .elementor-button.elementor-size-sm{min-height:40px}
+.elementor-form .elementor-button.elementor-size-md{min-height:47px}
+.elementor-heading-title{padding:0;margin:0;line-height:1}
+.elementor-button{display:inline-block;line-height:1;background-color:#69727D;font-size:15px;padding:12px 24px;border-radius:3px;color:#fff;fill:#fff;text-align:center;transition:all .3s}
+.elementor-button:hover,.elementor-button:focus,.elementor-button:visited{color:#fff}
+.elementor-button-content-wrapper{display:flex;justify-content:center;flex-direction:row;gap:5px}
+.elementor-button-icon{display:flex;align-items:center}
+.elementor-button-icon svg{width:1em;height:auto}
+.elementor-button-icon .e-font-icon-svg{height:1em}
+.elementor-button-text{display:inline-block}
+.elementor-button.elementor-size-md{font-size:16px;padding:15px 30px;border-radius:4px}
+.elementor-button span{text-decoration:inherit}
+@media (max-width:767px){.elementor .elementor-hidden-phone,.elementor .elementor-hidden-mobile{display:none}}
+@media (min-width:768px) and (max-width:1024px){.elementor .elementor-hidden-tablet{display:none}}
+@media (min-width:1025px) and (max-width:99999px){.elementor .elementor-hidden-desktop{display:none}}

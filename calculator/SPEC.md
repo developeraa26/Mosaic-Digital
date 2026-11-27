@@ -188,6 +188,8 @@ Behaviour:
      
      Use `add_error($id, $msg)` for each.
    - **Rate limit:** at most 5 calculator submissions per IP per hour, and 3 per email address per 24 hours. Use transients keyed by `lp_calc_rl_` plus the md5 of the IP or of the lowercased email. Count a submission only after validation passes. The limit message is "You have requested several quotations already. Please try again later or email info@ledgerplus.ae." The limits are filterable.
+     - *Review addition:* the IP key is the IPv6 /64 network (IPv4 unchanged), and the email key is the canonical mailbox (lowercased, without a "+tag", Gmail dots removed). A site-wide cap (`global`, 30 client emails per hour, same filter) skips only the client email (`email_sent` false); the lead still goes to Zoho and the team.
+   - *Review addition:* `name`, `company` and `business_other` must not contain `://`, `www.`, `@` or `mailto:` (PDF viewers turn them into links). Messages: "Please enter your name without a web or email address.", "Please enter your company name without a web or email address.", "Please describe your business activity without a web or email address." calculator.js applies the same rule, and strips spaces from the phone before submit (Elementor Pro's Tel field rejects them on the server).
 3. **`elementor_pro/forms/record/actions_before`** (filter, priority 10):
    - Recompute the quote on the server and make a ref with the format `LPQ-YYMMDD-XXXXX` (UTC date plus 5 uppercase hex characters from `random_bytes`).
    - Overwrite these field values with `update_field`:
@@ -196,7 +198,8 @@ Behaviour:
      - `quote_summary` (`summary_text`);
      - `field_lead_form`, forced to `Ledgerplus Package Calculator`;
      - `lead_source`, forced to `Website`;
-     - `lpc_services`, rewritten as the human-readable labels joined with ", ".
+     - `lpc_services`, rewritten as the human-readable labels joined with ", ";
+     - *review addition:* `lpc_business` (canonical type), `lpc_business_other` ('' unless Other), `lpc_employees` (the label, or '' without payroll) and `lpc_reports` (the count, or '' without reports), so the saved submission matches the quote.
    - Keep the normalized selection and the quote for this request in a private static property.
    - Return `$record`.
 4. **`elementor_pro/forms/new_record`** (priority 20):

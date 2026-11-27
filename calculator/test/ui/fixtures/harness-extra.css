@@ -1,0 +1,47 @@
+/* Rules the real page has that the faithful CSS subset leaves out. */
+
+/* Hello Elementor reset.css (button states) */
+[type=button]:focus:not(:focus-visible),[type=submit]:focus:not(:focus-visible),button:focus:not(:focus-visible){outline:none}
+[type=button]:focus,[type=button]:hover,[type=submit]:focus,[type=submit]:hover,button:focus,button:hover{background-color:#c36;color:#fff;text-decoration:none}
+[type=button]:not(:disabled),[type=submit]:not(:disabled),button:not(:disabled){cursor:pointer}
+
+/* Elementor frontend: buttons, form messages, required mark */
+.elementor-button{background-color:#69727d;border-radius:3px;color:#fff;display:inline-block;font-size:15px;line-height:1;padding:12px 24px;fill:#fff;text-align:center;transition:all .3s}
+.elementor-button:focus,.elementor-button:hover,.elementor-button:visited{color:#fff}
+.elementor-button-content-wrapper{display:flex;flex-direction:row;gap:5px;justify-content:center}
+.elementor-button.elementor-size-md{border-radius:4px;font-size:16px;padding:15px 30px}
+.elementor-message:before{content:"\e90e";display:inline-block;font-family:eicons;font-style:normal;font-weight:400;margin-inline-end:5px;vertical-align:middle}
+.elementor-message.elementor-message-danger{color:#d9534f}
+.elementor-message.elementor-message-danger:before{content:"\e87f"}
+.elementor-message.elementor-message-success{color:#5cb85c}
+.elementor-mark-required .elementor-field-label:after{color:red;content:"*";padding-inline-start:.2em}
+
+/* Kit rules Elementor prints for every form widget (copied from the live post-30.css) */
+.elementor-widget-form .elementor-field-group > label, .elementor-widget-form .elementor-field-subgroup label{color:var( --e-global-color-text );}
+.elementor-widget-form .elementor-field-group > label{font-family:var( --e-global-typography-text-font-family ), Sans-serif;font-weight:var( --e-global-typography-text-font-weight );}
+.elementor-widget-form .elementor-field-group .elementor-field{color:var( --e-global-color-text );}
+.elementor-widget-form .elementor-field-group .elementor-field, .elementor-widget-form .elementor-field-subgroup label{font-family:var( --e-global-typography-text-font-family ), Sans-serif;font-weight:var( --e-global-typography-text-font-weight );}
+.elementor-widget-form .elementor-button{font-family:var( --e-global-typography-accent-font-family ), Sans-serif;font-weight:var( --e-global-typography-accent-font-weight );}
+.elementor-widget-form .elementor-button[type="submit"]{background-color:var( --e-global-color-accent );}
+.elementor-widget-form .elementor-message{font-family:var( --e-global-typography-text-font-family ), Sans-serif;font-weight:var( --e-global-typography-text-font-weight );}
+
+/* The per-widget defaults Elementor prints for the form widget (.elementor-element-<id>) are generated
+   by harness.js buildShell() from the form widget id in page/out/page.json. */
+
+/* Elementor Pro sticky header (the real one switches to position:fixed with a spacer) */
+.elementor-location-header{position:sticky;top:0;z-index:99}
+
+/* Page (approximation of the draft page's post CSS): page background, hero, calculator container */
+body.elementor-page-9001{background-color:#f6f8fd}
+.elementor-9001 .elementor-element.elementor-element-a1c0de1{--display:flex;--flex-direction:column;--content-width:1160px;--gap:0px;--row-gap:0px;--padding-top:72px;--padding-bottom:120px;--padding-left:24px;--padding-right:24px;background:linear-gradient(135deg,#041950 0%,#0a2a7a 100%);color:#fff}
+.elementor-9001 .elementor-element.elementor-element-a1c0de1 .lp-hero-eyebrow{margin:0 0 18px;color:#8fb8ff;font-family:"DM Sans",sans-serif;font-size:12px;font-weight:700;letter-spacing:.14em;line-height:1.4;text-transform:uppercase}
+.elementor-9001 .elementor-element.elementor-element-a1c0de1 h1.elementor-heading-title{max-width:760px;margin:0 0 16px;color:#fff;font-family:"DM Sans",sans-serif;font-size:clamp(34px,5vw,54px);font-weight:700;letter-spacing:-.03em;line-height:1.08}
+.elementor-9001 .elementor-element.elementor-element-a1c0de1 .lp-hero-sub{max-width:620px;margin:0;color:rgba(255,255,255,.8);font-family:"DM Sans",sans-serif;font-size:17px;line-height:1.65}
+.elementor-9001 .elementor-element.elementor-element-a1c0de1 .lp-hero-tags{display:flex;flex-wrap:wrap;gap:8px;margin-top:24px}
+.elementor-9001 .elementor-element.elementor-element-a1c0de1 .lp-hero-tags span{padding:7px 12px;border:1px solid rgba(255,255,255,.18);border-radius:99px;background:rgba(255,255,255,.06);color:#dbe7ff;font-family:"DM Sans",sans-serif;font-size:13px;font-weight:500}
+.elementor-9001 .elementor-element.elementor-element-c2a1c00{--display:flex;--flex-direction:column;--content-width:1160px;--margin-top:-80px;--padding-top:0px;--padding-bottom:72px;--padding-left:24px;--padding-right:24px;--z-index:2;position:relative;z-index:2}
+@media(max-width:767px){
+.elementor-9001 .elementor-element.elementor-element-a1c0de1{--padding-top:44px;--padding-bottom:110px;--padding-left:16px;--padding-right:16px}
+.elementor-9001 .elementor-element.elementor-element-a1c0de1 .lp-hero-sub{font-size:15px}
+.elementor-9001 .elementor-element.elementor-element-c2a1c00{--padding-left:12px;--padding-right:12px;--padding-bottom:40px}
+}

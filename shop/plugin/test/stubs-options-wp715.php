@@ -58,6 +58,7 @@ function add_option( $k, $v = '', $dep = '', $autoload = null ) {
 	$r = adv_req();
 	if ( ! isset( $GLOBALS['adv']['req'][ $r ]['notoptions'][ $k ] ) ) {
 		if ( false !== get_option( $k ) ) {
+			adv_point( 'add_option:exists' ); // A request waiting for a lock can be paused here (F14 race scenario).
 			return false;
 		}
 	}

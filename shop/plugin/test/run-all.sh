@@ -20,11 +20,12 @@ done
 # Concurrency (Fibers + WordPress 7.1.5 option model), against the plugin and the snippet.
 tmp_snip=$(mktemp --suffix=.php)
 { echo '<?php'; cat "$B/ledgerplus-shop-wpcode.php"; } > "$tmp_snip"
-for s in same-second next-second stale-takeover stale-worst webhook-thankyou geidea-callback-thankyou geidea-thankyou-scheduled; do
+for s in same-second next-second stale-takeover stale-worst webhook-thankyou geidea-callback-thankyou geidea-thankyou-scheduled zoho-thankyou-job zoho-job-thankyou zoho-checkout-paid; do
   php run-race.php "$s" || rc=1
 done
 php run-race.php stale-worst "$tmp_snip" > /dev/null && echo "  PASS  stale-worst also with the WPCode snippet" || { echo "  FAIL  stale-worst with the WPCode snippet"; rc=1; }
 php run-race.php geidea-callback-thankyou "$tmp_snip" > /dev/null && echo "  PASS  geidea-callback-thankyou also with the WPCode snippet" || { echo "  FAIL  geidea-callback-thankyou with the WPCode snippet"; rc=1; }
+php run-race.php zoho-checkout-paid "$tmp_snip" > /dev/null && echo "  PASS  zoho-checkout-paid also with the WPCode snippet" || { echo "  FAIL  zoho-checkout-paid with the WPCode snippet"; rc=1; }
 
 # F12 Geidea payment safety net: in-process (stubs, mocked Geidea API) and end to end through PHP's built-in
 # server (real php://input, output buffer, die() and shutdown order), against the plugin and the snippet.
@@ -37,6 +38,11 @@ php run-geidea-http.php "$tmp_snip" > /dev/null && echo "  PASS  run-geidea-http
 # against the plugin and the snippet (each run also checks the wp-config constants in a second process).
 php run-f13.php || rc=1
 php run-f13.php "$tmp_snip" > /dev/null && echo "  PASS  run-f13.php also with the WPCode snippet" || { echo "  FAIL  run-f13.php with the WPCode snippet"; rc=1; }
+
+# F14 (1.2.0): Zoho CRM sync through the Zoho CRM add-on (stubbed, with a fake Zoho CRM v2 API), against the plugin
+# and the snippet (each run also checks LP_SHOP_ZOHO_SYNC and a missing / old add-on in second processes).
+php run-f14.php || rc=1
+php run-f14.php "$tmp_snip" > /dev/null && echo "  PASS  run-f14.php also with the WPCode snippet" || { echo "  FAIL  run-f14.php with the WPCode snippet"; rc=1; }
 rm -f "$tmp_snip"
 
 echo

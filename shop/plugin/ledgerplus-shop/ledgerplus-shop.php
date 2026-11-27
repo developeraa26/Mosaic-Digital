@@ -212,6 +212,10 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 		const ZOHO_UTM_KEYS       = array( 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_keyword' );
 		const ZOHO_TY_PREFIX      = 'lp_shop_zoho_ty_';
 		const ZOHO_TY_HOUR_PREFIX = 'lp_shop_zoho_tyh_';
+		/** Site-wide count of unpaid orders the background job sent without a known record, per hour (zoho_open_per_hour). */
+		const ZOHO_OPEN_HOUR_PREFIX = 'lp_shop_zoho_open_';
+		/** Seconds after a create that got no answer during which no second create is sent (Zoho's search may not see it yet). */
+		const ZOHO_CREATE_SETTLE = 180;
 		/** Thank-you page: at most one sync per order every N seconds, and at most N per order in an hour. */
 		const ZOHO_TY_INTERVAL = 30;
 		const ZOHO_TY_PER_HOUR = 3;
@@ -240,6 +244,7 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 		const META_ZOHO_ATTEMPTS    = '_lp_zoho_attempts';
 		const META_ZOHO_MISSING     = '_lp_zoho_addon_missing';
 		const META_ZOHO_UTM         = '_lp_zoho_utm';
+		const META_ZOHO_CREATE_AT   = '_lp_zoho_create_unconfirmed';
 
 		/** @var bool */
 		private static $booted = false;
@@ -279,6 +284,9 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 
 		/** @var float F14: end of the time budget (microtime) of the Zoho call running now, 0 = none. */
 		private static $zoho_http_deadline = 0.0;
+
+		/** @var int F14: HTTP status of the last response WordPress handed back while this plugin called the add-on (0 = none). */
+		private static $zoho_http_status = 0;
 
 		/* ==================================================================
 		 * Boot
@@ -434,7 +442,7 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 			add_filter( 'woocommerce_payment_successful_result', array( __CLASS__, 'filter_zoho_payment_result' ), 30, 2 );
 			// ... the order becomes paid: woocommerce_order_status_changed ( $id, $from, $to, $order ) after every status
 			// change (includes/class-wc-order.php:480: payment_complete(), Geidea's handler, F12, a change by hand) and
-			// woocommerce_payment_complete ( $order_id ) (class-wc-order.php:191)...
+			// woocommerce_payment_complete ( $order_id ) (class-wc-order.php:186)...
 			add_action( 'woocommerce_order_status_changed', array( __CLASS__, 'on_zoho_status_changed' ), 30, 4 );
 			add_action( 'woocommerce_payment_complete', array( __CLASS__, 'on_zoho_payment_complete' ), 30 );
 			add_action( self::ZOHO_SYNC_HOOK, array( __CLASS__, 'run_zoho_job' ), 10, 2 );
@@ -541,6 +549,11 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 				'zoho_request_timeout'          => 4,
 				// F14: minutes after a failed attempt at which the background job tries again (array() = no retries).
 				'zoho_retry_delays'             => array( 5, 30, 120 ),
+				// F14: at most this many unpaid orders without a known Zoho record are sent by the background job per
+				// hour, site-wide (0 = no limit); the others wait for the next hour. Bots placing unpaid orders cannot
+				// fill the CRM or use up the add-on's Zoho API credits, which the website forms share. Paid orders, the
+				// thank-you page and the order action are never limited.
+				'zoho_open_per_hour'            => 60,
 			);
 
 			$settings = function_exists( 'apply_filters' ) ? apply_filters( 'lp_shop_settings', $defaults ) : $defaults;
@@ -577,10 +590,10 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 			$settings['geidea_api_base']               = ( 1 === preg_match( '#^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$#', $base ) ) ? $base : '';
 
 			// F14.
-			$settings['zoho_sync'] = ! empty( $settings['zoho_sync'] );
-			$module                = is_string( $settings['zoho_module'] ) ? trim( $settings['zoho_module'] ) : '';
-			$settings['zoho_module'] = ( 1 === preg_match( '/^[A-Za-z][A-Za-z0-9_]{0,99}$/', $module ) ) ? $module : $defaults['zoho_module'];
-			$owner                   = is_scalar( $settings['zoho_owner_id'] ) ? trim( (string) $settings['zoho_owner_id'] ) : '';
+			$settings['zoho_sync']     = ! empty( $settings['zoho_sync'] );
+			$module                    = is_string( $settings['zoho_module'] ) ? trim( $settings['zoho_module'] ) : '';
+			$settings['zoho_module']   = ( 1 === preg_match( '/^[A-Za-z][A-Za-z0-9_]{0,99}$/', $module ) ) ? $module : $defaults['zoho_module'];
+			$owner                     = is_scalar( $settings['zoho_owner_id'] ) ? trim( (string) $settings['zoho_owner_id'] ) : '';
 			$settings['zoho_owner_id'] = ( '' === $owner || 1 === preg_match( '/^[0-9]{1,25}$/', $owner ) ) ? $owner : $defaults['zoho_owner_id'];
 			foreach ( array( 'zoho_status_open', 'zoho_status_paid', 'zoho_lead_source', 'zoho_lead_form' ) as $key ) {
 				$value = is_scalar( $settings[ $key ] ) ? self::zoho_cut( self::zoho_one_line( (string) $settings[ $key ] ), self::ZOHO_TEXT_MAX ) : (string) $defaults[ $key ];
@@ -598,7 +611,8 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 			}
 			$retry = array_values( array_unique( $retry ) );
 			sort( $retry );
-			$settings['zoho_retry_delays'] = array_slice( $retry, 0, 5 );
+			$settings['zoho_retry_delays']  = array_slice( $retry, 0, 5 );
+			$settings['zoho_open_per_hour'] = self::clamp_int( $settings['zoho_open_per_hour'], 0, 1000, $defaults['zoho_open_per_hour'] );
 
 			self::$settings = $settings;
 			return $settings;
@@ -5325,8 +5339,9 @@ CSS;
 
 		/**
 		 * Hides personal data and anything that could be a token or a host in a text before it is stored or logged:
-		 * the order's billing email, phone (also as digits only) and names, every email address and "+" phone number,
-		 * long token-like strings, URLs and host names (the add-on's API domain can appear in a cURL error).
+		 * every email address and "+" phone number, the order's billing email, phone (also as digits only) and names,
+		 * other runs of 9-15 digits, long token-like strings, URLs and host names (the add-on's API domain can appear in
+		 * a cURL error).
 		 *
 		 * @param mixed          $text  Text.
 		 * @param \WC_Order|null $order Order.
@@ -5341,9 +5356,16 @@ CSS;
 					$extra[] = $digits;
 				}
 			}
-			$text = self::scrub( is_scalar( $text ) ? (string) $text : '', $extra );
-			$text = (string) preg_replace( '#\b[a-z][a-z0-9+.\-]*://\S+#i', '[url]', $text );
+			$text = is_scalar( $text ) ? (string) $text : '';
+			$text = (string) preg_replace( '/\bZoho-oauthtoken\s+[^\s)"\'<>,;]+/i', '[hidden]', $text ); // An Authorization header value.
+			$text = (string) preg_replace( '/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/', '[email]', $text );
+			$text = (string) preg_replace( '/\+[0-9][0-9 \-]{6,16}[0-9]/', '[phone]', $text );
+			$text = self::scrub( $text, $extra );
+			$text = (string) preg_replace( '#\b[a-z][a-z0-9+.\-]*://[^\s)"\'<>]+#i', '[url]', $text );
+			// Token-like strings before the digit runs below, which would otherwise cut a token into short pieces.
 			$text = (string) preg_replace( '/[A-Za-z0-9_\-.]{32,}/', '[hidden]', $text );
+			// Other phone numbers written as digits only (Zoho record ids have 18-19 digits and stay readable).
+			$text = (string) preg_replace( '/(?<![0-9])[0-9]{9,15}(?![0-9])/', '[number]', $text );
 			$text = (string) preg_replace( '/\b(?:[a-z0-9](?:[a-z0-9\-]*[a-z0-9])?\.)+[a-z]{2,24}\b/i', '[host]', $text );
 			return self::clean_text( $text, $max );
 		}
@@ -5650,19 +5672,41 @@ CSS;
 		}
 
 		/**
+		 * http_response ( $response, $args, $url ), only added while this plugin calls the Zoho add-on: keeps the HTTP
+		 * status of the add-on's last response (the add-on hands back only the decoded body, so Zoho's HTTP 204 "no
+		 * match" and a 5xx page with no JSON would look the same). WP_Http::request() runs this filter on every reply it
+		 * returns (a token refresh too; the API request comes last). Nothing else of the response is kept.
+		 *
+		 * @param mixed  $response HTTP response.
+		 * @param array  $args     HTTP request arguments.
+		 * @param string $url      URL (not used, never stored).
+		 * @return mixed
+		 */
+		public static function filter_zoho_http_response( $response, $args = array(), $url = '' ) {
+			if ( is_array( $response ) && isset( $response['response']['code'] ) && is_numeric( $response['response']['code'] ) ) {
+				self::$zoho_http_status = (int) $response['response']['code'];
+			}
+			return $response;
+		}
+
+		/**
 		 * Calls one of the add-on's request methods with the HTTP time-out cap and the time budget of $ctx.
 		 *
 		 * @param string $method  sendGetRequest, sendPostRequest or sendPutRequest.
 		 * @param string $model   Zoho path after /crm/v2/, e.g. "Ledgers_Plus/search".
 		 * @param array  $fields  Request data.
 		 * @param array  $ctx     Sync context (deadline, cap, calls).
-		 * @return array array( 'body' => decoded answer ) or array( 'error' => zoho_error() ).
+		 * @return array array( 'body' => decoded answer, 'http' => HTTP status or 0 ) or array( 'error' => zoho_error() ).
 		 */
 		private static function zoho_call( $method, $model, $fields, &$ctx ) {
 			$cap = (float) $ctx['cap'];
 			if ( $ctx['deadline'] > 0 ) {
 				$left = $ctx['deadline'] - microtime( true );
-				if ( $left < self::ZOHO_MIN_LEFT ) {
+				// A write (create, Lead Status, note) cut off by the time-out has usually been carried out by Zoho all the
+				// same, and the next try would send it again (a second note, the workflow rules once more): with a time
+				// budget a write starts only with its full time-out left. The search may use what is left.
+				$need = 'sendGetRequest' === $method ? self::ZOHO_MIN_LEFT : max( self::ZOHO_MIN_LEFT, $cap );
+				if ( $left < $need ) {
 					/* translators: %d: seconds. */
 					return array( 'error' => self::zoho_error( 'budget', sprintf( __( 'the time limit of %d seconds ran out before the next Zoho request', 'ledgerplus-shop' ), (int) round( $ctx['budget'] ) ) ) );
 				}
@@ -5673,8 +5717,11 @@ CSS;
 			}
 			self::$zoho_http_cap      = $cap;
 			self::$zoho_http_deadline = (float) $ctx['deadline'];
+			self::$zoho_http_status   = 0;
 			add_filter( 'http_request_args', array( __CLASS__, 'filter_zoho_http_args' ), PHP_INT_MAX, 2 );
+			add_filter( 'http_response', array( __CLASS__, 'filter_zoho_http_response' ), PHP_INT_MAX, 3 );
 			++$ctx['calls'];
+			$http = 0;
 			try {
 				$body = call_user_func( array( self::ZOHO_CRM_CLASS, $method ), $model, $fields );
 			} catch ( \Throwable $e ) {
@@ -5682,6 +5729,9 @@ CSS;
 				return array( 'error' => self::zoho_error( 'addon_error', sprintf( __( 'the Zoho CRM add-on failed (%1$s: %2$s)', 'ledgerplus-shop' ), get_class( $e ), $e->getMessage() ) ) );
 			} finally {
 				remove_filter( 'http_request_args', array( __CLASS__, 'filter_zoho_http_args' ), PHP_INT_MAX );
+				remove_filter( 'http_response', array( __CLASS__, 'filter_zoho_http_response' ), PHP_INT_MAX );
+				$http                     = (int) self::$zoho_http_status;
+				self::$zoho_http_status   = 0;
 				self::$zoho_http_cap      = null;
 				self::$zoho_http_deadline = 0.0;
 			}
@@ -5695,7 +5745,10 @@ CSS;
 				/* translators: 1: error code, 2: error message. */
 				return array( 'error' => self::zoho_error( 'http', sprintf( __( 'the request to Zoho failed (%1$s: %2$s)', 'ledgerplus-shop' ), '' !== $code ? $code : 'error', $msg ) ) );
 			}
-			return array( 'body' => $body );
+			return array(
+				'body' => $body,
+				'http' => $http,
+			);
 		}
 
 		/**
@@ -5774,6 +5827,7 @@ CSS;
 
 		/**
 		 * True when Zoho says the record id (or the note's parent id) does not exist (the record was deleted or merged).
+		 * Only asked for the answers of the Lead Status update and of a note, whose only ids are the record's own.
 		 *
 		 * @param array $error zoho_error().
 		 * @return bool
@@ -5782,12 +5836,18 @@ CSS;
 			if ( in_array( $error['code'], array( 'RECORD_NOT_FOUND', 'ENTITY_ID_INVALID', 'INVALID_RECORD_ID' ), true ) ) {
 				return true;
 			}
-			return 'INVALID_DATA' === $error['code'] && in_array( $error['field'], array( 'id', 'Parent_Id' ), true );
+			if ( 'INVALID_DATA' !== $error['code'] ) {
+				return false;
+			}
+			// Zoho names the field in details.api_name ("id", "Parent_Id"), or answers only "the id given seems to be
+			// invalid" / "the related id given seems to be invalid" (details {"id": …}).
+			return in_array( $error['field'], array( 'id', 'Parent_Id' ), true ) || ( '' === $error['field'] && false !== stripos( $error['message'], 'id given seems to be invalid' ) );
 		}
 
 		/**
 		 * GET {module}/search?email=…: the id of the person's record ('' when there is none; Zoho answers HTTP 204 with
-		 * an empty body when nothing matches). Prefers a record whose Email is exactly this address.
+		 * an empty body when nothing matches; any other answer without JSON is an error, so a Zoho or proxy error page
+		 * never leads to a second record for the person). Prefers a record whose Email is exactly this address.
 		 *
 		 * @param string $email Email.
 		 * @param array  $ctx   Sync context.
@@ -5800,8 +5860,13 @@ CSS;
 				return $res;
 			}
 			$body = $res['body'];
-			if ( null === $body || '' === $body ) {
-				return array( 'id' => '' );
+			if ( null === $body ) {
+				if ( 204 === (int) $res['http'] ) {
+					return array( 'id' => '' );
+				}
+				$status = (int) $res['http'] > 0 ? sprintf( 'HTTP %d', (int) $res['http'] ) : __( 'no HTTP status', 'ledgerplus-shop' );
+				/* translators: %s: "HTTP 503" or "no HTTP status". */
+				return array( 'error' => self::zoho_error( 'unexpected', sprintf( __( 'unexpected answer from Zoho to the search (%s, no JSON)', 'ledgerplus-shop' ), $status ) ) );
 			}
 			if ( is_array( $body ) && isset( $body['status'] ) && is_string( $body['status'] ) && 'error' === strtolower( $body['status'] ) ) {
 				return array( 'error' => self::zoho_error_from( $body ) );
@@ -5883,7 +5948,9 @@ CSS;
 		}
 
 		/**
-		 * Saves the order's Zoho state (meta only; the order itself is not saved, so no status hook fires).
+		 * Saves the order's Zoho state with save_meta_data(): only these meta rows are written and no status hook fires.
+		 * With HPOS, WooCommerce may still save the order after a meta change (OrdersTableDataStore::after_meta_change():
+		 * date_modified, woocommerce_update_order, order.updated webhooks); the order has no other pending changes then.
 		 *
 		 * @param \WC_Order $order Order.
 		 * @param array     $state zoho_state().
@@ -5907,7 +5974,7 @@ CSS;
 		/**
 		 * A result of zoho_sync_order().
 		 *
-		 * @param string $result  done, synced, failed, busy, addon_missing, off or no_order.
+		 * @param string $result  done, synced, failed, busy, deferred, addon_missing, off or no_order.
 		 * @param string $message Message.
 		 * @return array{result:string,message:string}
 		 */
@@ -5934,7 +6001,8 @@ CSS;
 		 * @param int    $order_id Order ID.
 		 * @param string $mode     async (background job), thankyou or manual (order action).
 		 * @param string $reason   checkout, paid, retry, busy, manual or thankyou.
-		 * @return array{result:string,message:string}
+		 * @return array{result:string,message:string} result: done, synced, failed, busy, deferred (zoho_open_per_hour),
+		 *                                              addon_missing, off or no_order.
 		 */
 		public static function zoho_sync_order( $order_id, $mode = 'async', $reason = '' ) {
 			$order_id = absint( $order_id );
@@ -5974,6 +6042,21 @@ CSS;
 			}
 			try {
 				return self::zoho_sync_locked( $order_id, $ctx );
+			} catch ( \Throwable $e ) {
+				// An error in this plugin's own code (or in a lp_shop_zoho_record_fields filter) is a failed attempt too:
+				// noted, kept as the last error and retried like a Zoho error.
+				/* translators: 1: exception class, 2: message. */
+				$error = self::zoho_error( 'exception', sprintf( __( 'Ledger Plus failed while preparing the request (%1$s: %2$s)', 'ledgerplus-shop' ), get_class( $e ), $e->getMessage() ) );
+				try {
+					$order = self::reload_order( $order_id );
+					if ( $order ) {
+						return self::zoho_fail( $order, $error, $ctx, array() );
+					}
+				} catch ( \Throwable $e2 ) {
+					unset( $e2 );
+				}
+				self::zlog( 'error', 'Order ' . $order_id . ': Zoho CRM sync failed: ' . $error['message'] );
+				return self::zoho_result( 'failed', $error['message'] );
 			} finally {
 				self::release_lock( $order_id, self::ZOHO_LOCK_PREFIX );
 			}
@@ -6006,7 +6089,7 @@ CSS;
 					$order->update_meta_data( self::META_ZOHO_ERROR_AT, time() );
 					$order->save_meta_data();
 					/* translators: %s: add-on name. */
-					$order->add_order_note( sprintf( __( 'Ledger Plus: not sent to Zoho CRM: the "%s" add-on is not active on this site (its Crm class is missing). Activate it, then use Order actions > "Send to Zoho CRM again".', 'ledgerplus-shop' ), self::ZOHO_ADDON_NAME ) );
+					$order->add_order_note( sprintf( __( 'Ledger Plus: not sent to Zoho CRM: the "%s" add-on is not active on this site (its Crm class is missing). Activate it, then use the order action "Send to Zoho CRM again".', 'ledgerplus-shop' ), self::ZOHO_ADDON_NAME ) );
 					self::zlog( 'warning', 'Order ' . $order_id . ': not sent to Zoho CRM, the Zoho CRM add-on is not active (noted on the order, not retried).' );
 				}
 				return self::zoho_result( 'addon_missing', __( 'the Zoho CRM add-on is not active', 'ledgerplus-shop' ) );
@@ -6020,6 +6103,20 @@ CSS;
 
 			// 1. The record.
 			if ( '' === $state['id'] ) {
+				// Site-wide limit for unpaid orders sent by the background job (zoho_open_per_hour): the others wait for
+				// the next hour, with no attempt counted and no note. Paid orders, the thank-you page and the order
+				// action are never limited.
+				if ( 'open' === $target && 'async' === $ctx['mode'] && $s['zoho_open_per_hour'] > 0 && function_exists( 'get_transient' ) ) {
+					$hour_key = self::ZOHO_OPEN_HOUR_PREFIX . gmdate( 'YmdH' );
+					$sent     = (int) get_transient( $hour_key );
+					if ( $sent >= $s['zoho_open_per_hour'] ) {
+						$wait = 3660 - ( time() % 3600 );
+						self::zoho_schedule( $order_id, self::zoho_requeue_reason( $ctx['reason'] ), $wait );
+						self::zlog( 'info', 'Order ' . $order_id . ': not sent to Zoho CRM yet: ' . $s['zoho_open_per_hour'] . ' unpaid orders were sent this hour (zoho_open_per_hour); trying again in ' . (int) ceil( $wait / 60 ) . ' minutes.' );
+						return self::zoho_result( 'deferred', __( 'the hourly limit of unpaid orders sent to Zoho CRM was reached', 'ledgerplus-shop' ) );
+					}
+					set_transient( $hour_key, $sent + 1, 3600 );
+				}
 				$email = function_exists( 'sanitize_email' ) ? sanitize_email( (string) $order->get_billing_email() ) : trim( (string) $order->get_billing_email() );
 				$found = '';
 				if ( '' !== $email ) {
@@ -6028,6 +6125,14 @@ CSS;
 						return self::zoho_fail( $order, $res['error'], $ctx, $did );
 					}
 					$found = $res['id'];
+				}
+				// An earlier create got no answer (time-out, connection lost, error page) and may have been stored by
+				// Zoho all the same; Zoho's search can take a while to show a new record. No second create for
+				// ZOHO_CREATE_SETTLE seconds: the next try (5 minutes later) searches again.
+				$unconfirmed = absint( $order->get_meta( self::META_ZOHO_CREATE_AT, true ) );
+				if ( '' === $found && $unconfirmed && ( time() - $unconfirmed ) < self::ZOHO_CREATE_SETTLE ) {
+					/* translators: %d: minutes. */
+					return self::zoho_fail( $order, self::zoho_error( 'create_unconfirmed', sprintf( __( 'an earlier create got no answer from Zoho and the search does not show that record yet, so no second record is created within %d minutes of it', 'ledgerplus-shop' ), (int) ceil( self::ZOHO_CREATE_SETTLE / 60 ) ) ), $ctx, $did );
 				}
 				if ( '' !== $found ) {
 					$state['id']     = $found;
@@ -6050,6 +6155,11 @@ CSS;
 						$state['source'] = 'duplicate';
 						$did[]           = __( 'existing record found (Zoho reported a duplicate)', 'ledgerplus-shop' );
 					} elseif ( isset( $res['error'] ) ) {
+						if ( in_array( $res['error']['code'], array( 'timeout', 'http', 'unexpected', 'addon_error' ), true ) ) {
+							// No clear answer: Zoho may have stored the record although its answer was lost.
+							$order->update_meta_data( self::META_ZOHO_CREATE_AT, time() );
+							$order->save_meta_data();
+						}
 						return self::zoho_fail( $order, $res['error'], $ctx, $did );
 					} else {
 						$state['id']     = $res['id'];
@@ -6061,6 +6171,7 @@ CSS;
 						$did[] = sprintf( __( 'created as %s', 'ledgerplus-shop' ), $status );
 					}
 				}
+				$order->delete_meta_data( self::META_ZOHO_CREATE_AT );
 				self::zoho_save_state( $order, $state );
 			}
 
@@ -6135,7 +6246,7 @@ CSS;
 			$summary = implode( '; ', $did );
 			/* translators: 1: module, 2: record id, 3: what was done, 4: where. */
 			$order->add_order_note( sprintf( __( 'Ledger Plus: sent to Zoho CRM (%1$s record %2$s): %3$s (%4$s).', 'ledgerplus-shop' ), $s['zoho_module'], $state['id'], $summary, self::zoho_mode_label( $ctx ) ) );
-			self::zlog( 'info', 'Order ' . $order_id . ': sent to Zoho CRM (' . $s['zoho_module'] . ' record ' . $state['id'] . ', ' . self::zoho_mode_label( $ctx ) . ', ' . $ctx['calls'] . ' requests, ' . round( microtime( true ) - $ctx['start'], 1 ) . ' s): ' . $summary . '.' );
+			self::zlog( 'info', 'Order ' . $order_id . ': sent to Zoho CRM (' . $s['zoho_module'] . ' record ' . $state['id'] . ', ' . self::zoho_mode_label( $ctx ) . ', ' . $ctx['calls'] . ( 1 === $ctx['calls'] ? ' request, ' : ' requests, ' ) . round( microtime( true ) - $ctx['start'], 1 ) . ' s): ' . $summary . '.' );
 			return self::zoho_result( 'synced', $summary );
 		}
 
@@ -6154,8 +6265,9 @@ CSS;
 
 		/**
 		 * Records a failed attempt. Background job and order action: an order note, the error and the attempt count in
-		 * the meta, and the next try (zoho_retry_delays; a new event starts a new series). Thank-you page: the error and
-		 * the log only; a background job finishes the sync.
+		 * the meta, and the next try (zoho_retry_delays; the payment and the order action start a new series, the
+		 * checkout job only when none is under way). Thank-you page: the error and the log only; a background job
+		 * finishes the sync, counting on from the attempts already made.
 		 *
 		 * @param \WC_Order  $order Order.
 		 * @param array      $error zoho_error().
@@ -6193,16 +6305,27 @@ CSS;
 			/* translators: 1: record id, 2: steps done. */
 			$done = $did ? ' ' . sprintf( __( 'Done before the error (record %1$s): %2$s.', 'ledgerplus-shop' ), '' !== $rec_id ? $rec_id : '?', implode( '; ', $did ) ) : '';
 
+			$delays = $s['zoho_retry_delays'];
+			$before = absint( $order->get_meta( self::META_ZOHO_ATTEMPTS, true ) );
+
 			if ( 'thankyou' === $ctx['mode'] ) {
 				$order->save_meta_data();
-				$queued = self::zoho_ensure_queued( $order_id );
-				self::zlog( 'budget' === $error['code'] ? 'info' : 'warning', 'Order ' . $order_id . ': thank-you page sync stopped: ' . $message . '.' . $done . ' The page was shown as usual; ' . ( $queued ? 'a background job was queued to finish it.' : 'the queued background job finishes it.' ), $order );
+				$queued = self::zoho_ensure_queued( $order_id, $order );
+				if ( $queued ) {
+					$next = 'a background job was queued to finish it.';
+				} elseif ( $before > count( $delays ) ) {
+					$next = 'its automatic tries are used up (order action "Send to Zoho CRM again").';
+				} else {
+					$next = 'the queued background job finishes it.';
+				}
+				self::zlog( 'budget' === $error['code'] ? 'info' : 'warning', 'Order ' . $order_id . ': thank-you page sync stopped: ' . $message . '.' . $done . ' The page was shown as usual; ' . $next, $order );
 				return self::zoho_result( 'failed', $message );
 			}
 
-			$fresh    = in_array( $ctx['reason'], array( 'checkout', 'paid', 'manual' ), true );
-			$attempts = ( $fresh ? 0 : absint( $order->get_meta( self::META_ZOHO_ATTEMPTS, true ) ) ) + 1;
-			$delays   = $s['zoho_retry_delays'];
+			// A new event (the payment, the order action) starts a new series of tries. The checkout job does only while
+			// no series is under way: "Place order" / "Pay for order" again for the same order does not restart one.
+			$fresh    = in_array( $ctx['reason'], array( 'paid', 'manual' ), true ) || ( 'checkout' === $ctx['reason'] && 0 === $before );
+			$attempts = ( $fresh ? 0 : $before ) + 1;
 			$max      = count( $delays ) + 1;
 			$order->update_meta_data( self::META_ZOHO_ATTEMPTS, $attempts );
 			$order->save_meta_data();
@@ -6210,7 +6333,7 @@ CSS;
 				/* translators: %d: minutes. */
 				$next = sprintf( __( 'Ledger Plus will try again in about %d minutes.', 'ledgerplus-shop' ), (int) $delays[ $attempts - 1 ] );
 			} else {
-				$next = __( 'No more automatic tries: use Order actions > "Send to Zoho CRM again".', 'ledgerplus-shop' );
+				$next = __( 'No more automatic tries: use the order action "Send to Zoho CRM again".', 'ledgerplus-shop' );
 			}
 			/* translators: 1: attempt, 2: attempts in all, 3: where, 4: error, 5: steps done, 6: next try. */
 			$order->add_order_note( sprintf( __( 'Ledger Plus: Zoho CRM sync failed (attempt %1$d of %2$d, %3$s): %4$s.%5$s %6$s', 'ledgerplus-shop' ), min( $attempts, $max ), $max, self::zoho_mode_label( $ctx ), $message, $done, $next ) );
@@ -6293,18 +6416,38 @@ CSS;
 		}
 
 		/**
-		 * After a thank-you page failure: makes sure a background job will finish the sync.
+		 * The reason of a job run again later (busy, hourly limit): an event's job (checkout, paid) keeps its reason, so
+		 * its first failure is counted as that event's (a new series for the payment); others become "busy".
 		 *
-		 * @param int $order_id Order ID.
+		 * @param string $reason Reason of the job running now.
+		 * @return string
+		 */
+		private static function zoho_requeue_reason( $reason ) {
+			return in_array( $reason, array( 'checkout', 'paid' ), true ) ? $reason : 'busy';
+		}
+
+		/**
+		 * After a thank-you page failure: makes sure a background job will finish the sync. The job's reason is "retry",
+		 * so its failures count on from the attempts already made (visiting the page again never starts a new series),
+		 * and no job is queued when the automatic tries are used up (the order action starts a new series).
+		 *
+		 * @param int            $order_id Order ID.
+		 * @param \WC_Order|null $order    The order, when already read.
 		 * @return bool True when a job was queued now.
 		 */
-		private static function zoho_ensure_queued( $order_id ) {
-			foreach ( array( 'paid', 'retry', 'busy' ) as $reason ) {
+		private static function zoho_ensure_queued( $order_id, $order = null ) {
+			foreach ( array( 'checkout', 'paid', 'retry', 'busy' ) as $reason ) {
 				if ( self::zoho_job_pending( $order_id, $reason ) ) {
 					return false;
 				}
 			}
-			return self::zoho_enqueue( $order_id, 'paid' );
+			$order = $order instanceof \WC_Order ? $order : self::reload_order( $order_id );
+			$s     = self::settings();
+			if ( ! $order || absint( $order->get_meta( self::META_ZOHO_ATTEMPTS, true ) ) > count( $s['zoho_retry_delays'] ) || ! function_exists( 'as_enqueue_async_action' ) ) {
+				return false;
+			}
+			as_enqueue_async_action( self::ZOHO_SYNC_HOOK, self::zoho_job_args( $order_id, 'retry' ), self::GEIDEA_AS_GROUP );
+			return true;
 		}
 
 		/**
@@ -6326,6 +6469,12 @@ CSS;
 					return;
 				}
 				self::zoho_capture_utm( $order );
+				// "Place order" / "Pay for order" again for the same order: nothing new once its checkout step is done,
+				// and a series of tries under way (or used up) is finished by its retries or the order action, not
+				// started again by a visitor.
+				if ( in_array( 'checkout', self::zoho_state( $order )['notes'], true ) || absint( $order->get_meta( self::META_ZOHO_ATTEMPTS, true ) ) > 0 ) {
+					return;
+				}
 				self::zoho_enqueue( (int) $order->get_id(), 'checkout' );
 			} catch ( \Throwable $e ) {
 				self::zlog( 'error', 'Queueing the Zoho CRM sync at checkout failed: ' . $e->getMessage() );
@@ -6398,7 +6547,7 @@ CSS;
 
 		/**
 		 * Action Scheduler callback ( $order_id, $reason ). A job that finds another request sending the order tries again
-		 * a minute later (not counted as a failed attempt).
+		 * a minute later (not counted as a failed attempt; a checkout or paid job keeps its reason).
 		 *
 		 * @param int    $order_id Order ID.
 		 * @param string $reason   checkout, paid, retry or busy.
@@ -6411,7 +6560,7 @@ CSS;
 				$reason = is_string( $reason ) && in_array( $reason, array( 'checkout', 'paid', 'retry', 'busy' ), true ) ? $reason : 'retry';
 				$res    = self::zoho_sync_order( absint( $order_id ), 'async', $reason );
 				if ( 'busy' === $res['result'] ) {
-					self::zoho_schedule( absint( $order_id ), 'busy', self::ZOHO_BUSY_RETRY );
+					self::zoho_schedule( absint( $order_id ), self::zoho_requeue_reason( $reason ), self::ZOHO_BUSY_RETRY );
 					self::zlog( 'info', 'Order ' . absint( $order_id ) . ': another request was sending this order to Zoho CRM; trying again in ' . self::ZOHO_BUSY_RETRY . ' seconds.' );
 				}
 			} catch ( \Throwable $e ) {
@@ -6494,7 +6643,10 @@ CSS;
 			if ( ! $order_id || '' === $key || ! function_exists( 'wc_get_order' ) ) {
 				return null;
 			}
-			$order = wc_get_order( $order_id );
+			// Read again: the F12 check at priority 1 already read this order in this request, and with HPOS
+			// wc_get_order() would hand back that copy (OrderCache) although Geidea's callback may have paid the order
+			// since. reload_order() also puts the fresh copy back in the cache for the page itself.
+			$order = self::reload_order( $order_id );
 			if ( ! ( $order instanceof \WC_Order ) || ! hash_equals( (string) $order->get_order_key(), $key ) ) {
 				return null;
 			}

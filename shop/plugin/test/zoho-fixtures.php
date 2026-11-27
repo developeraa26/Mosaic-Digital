@@ -7,8 +7,10 @@
  * private static $authorizationInfo lazily (RequestHelper::getAuthInfo()), return that value instead of calling Zoho
  * when it is a WP_Error or has no access_token, apply itglx_elpro_zoho_post_data_before_send (POST / PUT), call
  * wp_remote_post / wp_remote_request / wp_remote_get on "{api_domain}/crm/v2/{model}" with a 20 s timeout (WordPress
- * passes the arguments through http_request_args, WP_Http::request()), and return json_decode( body, true ): null
- * for an empty body (Zoho answers a search without match with HTTP 204).
+ * passes the arguments through http_request_args and the reply through http_response, WP_Http::request()), and
+ * return json_decode( body, true ): null for an empty or non-JSON body (Zoho answers a search without match with
+ * HTTP 204; a 5xx error page has no JSON either). The token refresh can be modelled as one more HTTP request in the
+ * same call (refresh_latency).
  *
  * Nothing here is a real token or domain. Load with: require __DIR__ . '/zoho-fixtures.php';
  * Mode "no-addon" of run-f14.php sets LP_TEST_ZOHO_ADDON = 'none' (class not defined) or 'old' (no sendPutRequest)
@@ -38,6 +40,9 @@ namespace Itgalaxy\Elementor\Form\Zoho\Integration\Includes {
 			private static function request( $method, $model, $fields ) {
 				if ( null === self::$authorizationInfo ) {
 					$GLOBALS['lp_test']['zoho_auth_reads'] = ( $GLOBALS['lp_test']['zoho_auth_reads'] ?? 0 ) + 1;
+					if ( ! empty( $GLOBALS['lp_zoho']['refresh_latency'] ) ) {
+						\lp_zoho_token_refresh( (float) $GLOBALS['lp_zoho']['refresh_latency'] );
+					}
 					self::$authorizationInfo = $GLOBALS['lp_test']['zoho_auth'] ?? \lp_zoho_connected_auth();
 				}
 				$auth = self::$authorizationInfo;
@@ -63,6 +68,11 @@ namespace Itgalaxy\Elementor\Form\Zoho\Integration\Includes {
 				$response = \lp_zoho_handle( $method, $model, $fields, $args );
 				if ( \is_wp_error( $response ) ) {
 					return $response;
+				}
+				if ( empty( $GLOBALS['lp_zoho']['no_http_response'] ) ) {
+					// WP_Http::request() hands every reply through http_response before returning it. no_http_response
+					// models another plugin answering the request itself (pre_http_request), which skips that filter.
+					$response = \apply_filters( 'http_response', array( 'headers' => array(), 'body' => (string) $response['body'], 'response' => array( 'code' => (int) $response['code'], 'message' => '' ), 'cookies' => array() ), $args, $url );
 				}
 				return json_decode( (string) $response['body'], true );
 			}
@@ -101,7 +111,7 @@ namespace {
 	if ( ! function_exists( 'as_enqueue_async_action' ) ) {
 		function as_enqueue_async_action( $hook, $args = array(), $group = '', $unique = false, $priority = 10 ) {
 			if ( ! empty( $GLOBALS['lp_test']['as_throw'] ) ) {
-				throw new RuntimeException( 'Action Scheduler store unavailable' );
+				throw new RuntimeException( is_string( $GLOBALS['lp_test']['as_throw'] ) ? $GLOBALS['lp_test']['as_throw'] : 'Action Scheduler store unavailable' );
 			}
 			$GLOBALS['lp_test']['as'][] = array( 'time' => time(), 'hook' => $hook, 'args' => $args, 'group' => $group, 'status' => 'pending', 'async' => true );
 			return count( $GLOBALS['lp_test']['as'] );
@@ -112,18 +122,22 @@ namespace {
 	function lp_zoho_reset( $options = array() ) {
 		$GLOBALS['lp_zoho'] = array_merge(
 			array(
-				'module'       => 'Ledgers_Plus',
-				'records'      => array(),
-				'notes'        => array(),
-				'next_id'      => 5725767000000400001,
-				'unique_email' => false, // Zoho duplicate check on Email: create answers DUPLICATE_DATA.
-				'search_blind' => false, // Search finds nothing (e.g. a record created seconds ago is not indexed yet).
-				'latency'      => 0.0,   // Seconds each request takes.
-				'inject'       => array(), // Answers for the next requests (FIFO): WP_Error, array( code, body ), or a callable.
-				'writes'       => array(), // Every create / update with its trigger value.
+				'module'           => 'Ledgers_Plus',
+				'records'          => array(),
+				'notes'            => array(),
+				'next_id'          => 5725767000000400001,
+				'unique_email'     => false, // Zoho duplicate check on Email: create answers DUPLICATE_DATA.
+				'search_blind'     => false, // Search finds nothing (e.g. a record created seconds ago is not indexed yet).
+				'latency'          => 0.0,   // Seconds each request takes.
+				'inject'           => array(), // Answers for the next requests (FIFO): WP_Error, array( code, body ), or a callable.
+				'writes'           => array(), // Every create / update with its trigger value.
+				'late_writes'      => false, // A write answered after the client's time-out is carried out all the same (like a real server).
+				'refresh_latency'  => 0.0,   // > 0: the add-on refreshes its token first (one more HTTP request in the same call).
+				'no_http_response' => false, // The http_response filter is not run (another plugin answered the request).
 			),
 			$options
 		);
+		$GLOBALS['lp_test']['zoho_refreshes'] = array();
 		$GLOBALS['lp_test']['zoho_calls'] = array();
 		unset( $GLOBALS['lp_test']['zoho_auth'] );
 		if ( class_exists( '\Itgalaxy\Elementor\Form\Zoho\Integration\Includes\Crm' ) && method_exists( '\Itgalaxy\Elementor\Form\Zoho\Integration\Includes\Crm', 'lp_test_reset' ) ) {
@@ -154,6 +168,18 @@ namespace {
 		return array( 'code' => $code, 'details' => array(), 'message' => $message, 'status' => 'error' );
 	}
 
+	/**
+	 * The add-on's token refresh inside RequestHelper::getAuthInfo() (not readable; modelled as one wp_remote_post()
+	 * with WordPress's default 5 s time-out): goes through http_request_args and http_response like any WP_Http request.
+	 */
+	function lp_zoho_token_refresh( $latency ) {
+		$url  = 'https://accounts.example.invalid/oauth/v2/token';
+		$args = \apply_filters( 'http_request_args', array( 'method' => 'POST', 'timeout' => 5, 'body' => array( 'grant_type' => 'refresh_token' ) ), $url );
+		$GLOBALS['lp_test']['zoho_refreshes'][] = array( 'timeout' => $args['timeout'], 'at' => microtime( true ) );
+		usleep( (int) ( 1000000 * min( $latency, (float) $args['timeout'] ) ) );
+		\apply_filters( 'http_response', array( 'headers' => array(), 'body' => '{}', 'response' => array( 'code' => 200, 'message' => 'OK' ), 'cookies' => array() ), $args, $url );
+	}
+
 	/** The fake Zoho CRM v2 API behind the add-on stub. */
 	function lp_zoho_handle( $method, $model, $fields, $args ) {
 		$z       = &$GLOBALS['lp_zoho'];
@@ -162,6 +188,12 @@ namespace {
 			$timeout = (float) $args['timeout'];
 			usleep( (int) ( 1000000 * min( $latency, $timeout ) ) );
 			if ( $latency > $timeout ) {
+				if ( ! empty( $z['late_writes'] ) && 'GET' !== $method ) {
+					// Zoho carries the write out; only its answer comes too late for the client.
+					$z['latency'] = 0.0;
+					lp_zoho_handle( $method, $model, $fields, $args );
+					$z['latency'] = $latency;
+				}
 				return new WP_Error( 'http_request_failed', sprintf( 'cURL error 28: Operation timed out after %d milliseconds with 0 bytes received', (int) ( 1000 * $timeout ) ) );
 			}
 		}
@@ -179,8 +211,11 @@ namespace {
 			$email = strtolower( (string) ( $fields['email'] ?? '' ) );
 			$hits  = array();
 			foreach ( $z['records'] as $r ) {
-				if ( ! $z['search_blind'] && '' !== $email && strtolower( (string) ( $r['Email'] ?? '' ) ) === $email ) {
-					$hits[] = $r;
+				foreach ( $r as $key => $value ) { // Zoho's "email" search looks at every email field of the module.
+					if ( ! $z['search_blind'] && '' !== $email && false !== stripos( $key, 'Email' ) && is_string( $value ) && strtolower( $value ) === $email ) {
+						$hits[] = $r;
+						break;
+					}
 				}
 			}
 			return $hits ? lp_zoho_json( 200, array( 'data' => array_values( $hits ), 'info' => array( 'per_page' => 200, 'count' => count( $hits ), 'page' => 1, 'more_records' => false ) ) ) : lp_zoho_json( 204, null );

@@ -157,6 +157,91 @@ if ( 0 === strpos( $scenario, 'geidea-' ) ) {
 	exit( $fail ? 1 : 0 );
 }
 
+/* ---- F14 scenarios (Zoho CRM sync; the add-on stub and the fake Zoho of zoho-fixtures.php) ---- */
+if ( 0 === strpos( $scenario, 'zoho-' ) ) {
+	require __DIR__ . '/zoho-fixtures.php';
+	lp_zoho_reset();
+	$GLOBALS['lp_test']['orders'][101]['email'] = 'race.buyer@example.com';
+	$GLOBALS['wp']                              = (object) array( 'query_vars' => array( 'order-received' => 101 ) );
+	$_GET                                       = array( 'key' => 'wc_order_key101' );
+	$GLOBALS['lp_test']['order_received']       = true;
+	$fib = function ( $name, $fn ) {
+		return new Fiber(
+			function () use ( $name, $fn ) {
+				$GLOBALS['adv']['cur'] = $name;
+				$fn();
+			}
+		);
+	};
+	$GLOBALS['adv']['suspend'] = array(
+		'add_option:pre_insert'    => true,
+		'delete_option:pre_delete' => true,
+		'zoho_http'                => true,
+	);
+	$expect_updates = 0;
+	if ( 'zoho-thankyou-job' === $scenario || 'zoho-job-thankyou' === $scenario ) {
+		// The order is paid; its background job and the thank-you page sync it at the same moment (both past the
+		// lock's existence check before either INSERT).
+		$job      = $fib( 'J', function () { LP_Shop::run_zoho_job( 101, 'paid' ); } );
+		$thankyou = $fib( 'T', function () { LP_Shop::maybe_sync_zoho_on_thankyou(); } );
+		run_all( 'zoho-thankyou-job' === $scenario ? array( $thankyou, $job ) : array( $job, $thankyou ) );
+	} else {
+		// zoho-checkout-paid: the checkout job holds the lock and is waiting for Zoho's search answer when the order is
+		// paid; the paid job starts then and has to wait. It must not create a second record, and must still set
+		// Closed Opportunity (it reads the order again inside the lock).
+		$GLOBALS['lp_test']['orders'][101]['status']    = 'pending';
+		$GLOBALS['lp_test']['orders'][101]['date_paid'] = null;
+		$checkout = $fib( 'C', function () { LP_Shop::run_zoho_job( 101, 'checkout' ); } );
+		$checkout->start();
+		while ( ! $checkout->isTerminated() && 'C:zoho_http' !== end( $GLOBALS['adv']['trace'] ) ) {
+			$checkout->resume();
+		}
+		$GLOBALS['adv']['cur'] = 'main';
+		$GLOBALS['adv']['suspend'] = array();
+		wc_get_order( 101 )->update_status( 'processing', 'Paid.' );
+		$GLOBALS['adv']['suspend'] = array(
+			'add_option:pre_insert'    => true,
+			'add_option:exists'        => true, // The paid job finds the lock taken: let the checkout job go on.
+			'delete_option:pre_delete' => true,
+			'zoho_http'                => true,
+		);
+		$paid = $fib( 'P', function () { LP_Shop::run_zoho_job( 101, 'paid' ); } );
+		run_all( array( $checkout, $paid ) );
+		$expect_updates = 1;
+	}
+	$GLOBALS['adv']['suspend'] = array();
+
+	$records = $GLOBALS['lp_zoho']['records'];
+	$rec     = reset( $records );
+	$rid     = is_array( $rec ) ? $rec['id'] : '';
+	$titles  = array_map( function ( $n ) { return $n['Note_Title']; }, lp_zoho_notes_of( $rid ) );
+	$writes  = $GLOBALS['lp_zoho']['writes'];
+	$row     = $GLOBALS['lp_test']['orders'][101];
+	$synced  = array_filter( $GLOBALS['lp_test']['notes'][101] ?? array(), function ( $n ) { return false !== strpos( $n, 'sent to Zoho CRM' ); } );
+	echo "\n== race: $scenario ==\n";
+	echo '  trace: ' . implode( ' | ', array_filter( $GLOBALS['adv']['trace'], function ( $t ) { return false !== strpos( $t, 'zlock' ) || false !== strpos( $t, 'zoho_http' ); } ) ) . "\n";
+	echo '  Zoho: ' . count( $records ) . ' record(s), notes: ' . implode( ', ', $titles ) . ', writes: ' . implode( ', ', array_column( $writes, 'op' ) ) . "\n";
+	$fail = 0;
+	$ok   = function ( $name, $cond ) use ( &$fail ) {
+		echo ( $cond ? '  PASS  ' : '  FAIL  ' ) . $name . "\n";
+		if ( ! $cond ) {
+			$fail++;
+		}
+	};
+	$ok( 'exactly one Zoho record, created once, now Closed Opportunity', 1 === count( $records ) && 1 === count( array_filter( $writes, function ( $w ) { return 'create' === $w['op']; } ) ) && 'Closed Opportunity' === ( $rec['Lead_Status'] ?? '' ) );
+	$ok( 'one checkout note and one payment note on it', array( 'Ledger Plus Shop order #101 placed', 'Ledger Plus Shop order #101 paid' ) === $titles );
+	$ok( $expect_updates ? 'one update (Prospecting -> Closed Opportunity by the paid job, after reading the order again in the lock)' : 'no update (created as Closed Opportunity)', $expect_updates === count( array_filter( $writes, function ( $w ) { return 'update' === $w['op']; } ) ) );
+	$ok( 'order meta: that record, stage paid, both notes', $rid === ( $row['meta']['_lp_zoho_record_id'] ?? '' ) && 'paid' === ( $row['meta']['_lp_zoho_stage'] ?? '' ) && 'checkout,paid' === ( $row['meta']['_lp_zoho_notes'] ?? '' ) );
+	$ok( $expect_updates ? 'two "sent to Zoho CRM" order notes (one per job)' : 'one "sent to Zoho CRM" order note (the other request found nothing to send)', ( $expect_updates ? 2 : 1 ) === count( $synced ) );
+	$ok( 'Zoho lock released', ! array_key_exists( 'lp_shop_zlock_101', $GLOBALS['adv']['db'] ) && ! array_key_exists( 'lp_shop_zlock_101_at', $GLOBALS['adv']['db'] ) );
+	$ok( 'no PHP errors', array() === $GLOBALS['errs'] );
+	foreach ( $GLOBALS['errs'] as $e ) {
+		echo "    $e\n";
+	}
+	echo '  Result: ' . ( $fail ? "$fail failed" : 'all passed' ) . "\n";
+	exit( $fail ? 1 : 0 );
+}
+
 switch ( $scenario ) {
 	case 'same-second':
 	case 'next-second':

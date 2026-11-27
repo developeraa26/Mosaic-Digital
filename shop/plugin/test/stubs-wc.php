@@ -378,6 +378,7 @@ class WC_Order extends WC_Data {
 		$GLOBALS['lp_test']['meta_reads'] = ( $GLOBALS['lp_test']['meta_reads'] ?? 0 ) + 1;
 	}
 	public function save_meta_data() {
+		unset( $GLOBALS['lp_order_cache'][ $this->id ] );
 		$GLOBALS['lp_test']['orders'][ $this->id ]['meta'] = $this->meta;
 		$GLOBALS['lp_test']['meta_saves'][ $this->id ]     = ( $GLOBALS['lp_test']['meta_saves'][ $this->id ] ?? 0 ) + 1;
 	}
@@ -395,6 +396,7 @@ class WC_Order extends WC_Data {
 		if ( function_exists( 'adv_point' ) ) {
 			adv_point( 'order_save' );
 		}
+		unset( $GLOBALS['lp_order_cache'][ $this->id ] );
 		$GLOBALS['lp_test']['orders'][ $this->id ]['meta']   = $this->meta;
 		$GLOBALS['lp_test']['orders'][ $this->id ]['status'] = $this->status;
 		$GLOBALS['lp_test']['orders'][ $this->id ]['date_paid']      = $this->date_paid;
@@ -443,7 +445,20 @@ function wc_get_order( $id ) {
 	if ( $row ) {
 		apply_filters( 'woocommerce_order_class', 'WC_Order', $row['type'] ?? 'shop_order', (int) $id ); // class-wc-order-factory.php:304
 	}
-	return $row ? WC_Order::from_row( $row ) : false; // Always a fresh instance, like a real read.
+	if ( ! $row ) {
+		return false;
+	}
+	if ( ! empty( $GLOBALS['lp_test']['order_cache'] ) ) {
+		// F14 test mode: WooCommerce's per-request HPOS order cache (class-wc-order-factory.php:34-51; WP_Object_Cache
+		// hands out clones). Saves clear it (OrdersTableDataStore). Off by default.
+		if ( isset( $GLOBALS['lp_order_cache'][ (int) $id ] ) ) {
+			return clone $GLOBALS['lp_order_cache'][ (int) $id ];
+		}
+		$o                                      = WC_Order::from_row( $row );
+		$GLOBALS['lp_order_cache'][ (int) $id ] = clone $o;
+		return $o;
+	}
+	return WC_Order::from_row( $row ); // Always a fresh instance, like a real read.
 }
 
 function wc_get_orders( $args ) {

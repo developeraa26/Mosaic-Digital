@@ -41,9 +41,11 @@ The copy follows the client plan. Two kinds of change were made, both to be appr
 
 ## Still to do on the site (needs the client or the site owner)
 
-1. **Ledger Plus Shop plugin:** upload version **1.1.2** for the launch: `plugin/ledgerplus-shop-1.1.2.zip`, then "Replace current with uploaded" (1.1.0 was active on 27 Nov 2026; 1.1.2 replaces 1.1.0 or 1.1.1 and contains everything from both, including the Geidea safety net of item 2). Use one route only, not both:
-   - **Plugin zip (recommended):** Plugins > Add New > Upload Plugin > `plugin/ledgerplus-shop-1.1.2.zip` > Activate.
-   - **WPCode:** install the free WPCode plugin. The snippet `plugin/ledgerplus-shop-wpcode.php` (v1.1.2) is then added for you, switched off, and the site owner switches it on.
+1. **Ledger Plus Shop plugin:** upload version **1.2.0**: `plugin/ledgerplus-shop-1.2.0.zip`, then "Replace current with uploaded" (1.1.0 was active on 27 Nov 2026; 1.2.0 replaces 1.1.0, 1.1.1 or 1.1.2 and contains everything from them, including the launch fixes of 1.1.2, the Geidea safety net of item 2 and the Zoho CRM sync of Phase 2). Use one route only, not both:
+   - **Plugin zip (recommended):** Plugins > Add New > Upload Plugin > `plugin/ledgerplus-shop-1.2.0.zip` > Activate.
+   - **WPCode:** install the free WPCode plugin. The snippet `plugin/ledgerplus-shop-wpcode.php` (v1.2.0) is then added for you, switched off, and the site owner switches it on.
+
+   **New in 1.2.0 (F14, Zoho CRM sync):** every buyer and order goes to the Zoho CRM module of the website forms (Ledgers Plus): Lead Status **Prospecting** for an order that is not paid, **Closed Opportunity** once it is paid, set before the thank-you page is shown. Details under "Phase 2" below.
 
    **New in 1.1.2 (F13, launch fixes):**
    - the referral wording uses the confirmed rules: "… you can receive AED 999 cash back after their payment is confirmed. No cash back is due if their order is refunded, cancelled or disputed." on the thank-you page, the My Account dashboard and the order emails (until 1.1.1 the thank-you page and My Account showed "[Reward terms: to confirm]" to every buyer; a [bracketed] placeholder in the reward terms is now never shown). Payout method and timing are not promised, because they are not confirmed;
@@ -59,9 +61,10 @@ The copy follows the client plan. Two kinds of change were made, both to be appr
    - a redirect from the product page, `/shop/` and the product archives to the purchase page;
    - the thank-you page content;
    - the branded order emails (1.1.0), with "What happens next" in the Processing and Completed emails (1.1.2);
-   - the Geidea payment safety net (1.1.1, item 2).
+   - the Geidea payment safety net (1.1.1, item 2);
+   - the Zoho CRM sync of buyers and orders (1.2.0).
 
-   After uploading, follow the check list "After uploading 1.1.2" in `plugin/PLUGIN-README.md` section 7 (shop redirect, email preview, an AED 1.00 test payment). Details and a full test plan are in `plugin/PLUGIN-README.md`.
+   After uploading, follow the check lists "After uploading 1.2.0" (Zoho CRM: an unpaid and a paid test order) and, if the site still ran 1.1.0 or 1.1.1, "After uploading 1.1.2" (shop redirect, email preview, an AED 1.00 test payment) in `plugin/PLUGIN-README.md` section 7. Details and a full test plan are in `plugin/PLUGIN-README.md`.
 2. **Payment gateway (Geidea):** Geidea Online Payments 3.5.2 is installed and enabled (live UAE account); it supports the block checkout. Stripe is installed but switched off.
    - **Problem found on 27 Nov 2026:** an AED 1.00 test card payment succeeded at Geidea, but the orders (939, 940) stayed "Pending payment" and the thank-you page offered "Pay" again. Geidea's plugin only marks an order paid when Geidea's server-to-server callback (`https://ledgerplus.ae/?wc-api=geidea`) reaches the site and is accepted; nothing from it was recorded for these orders.
    - **Fix:** plugin 1.1.1 (feature F12, also in 1.1.2). It checks the callback and records what the site answered Geidea (and refuses a signed "paid" callback that does not fit the order, for example a different amount), and when the callback does not come it asks Geidea's API itself (on the thank-you page, 2 to 120 minutes after checkout, and from the new order action "Check payment with Geidea"). Paid orders then move to **Completed** (Geidea's "success" setting on this site), so refunds through Geidea keep working.
@@ -83,7 +86,7 @@ Done on the site:
 - **Store** switched from Coming soon to **Live**.
 
 Still to do (site owner):
-1. **Upload Ledger Plus Shop 1.1.2** (item 1) as soon as possible: until then the thank-you page shows "[Reward terms: to confirm]" after a purchase and `/shop/` shows the blog archive layout.
+1. **Upload Ledger Plus Shop 1.2.0** (item 1; it contains 1.1.2) as soon as possible: until then the thank-you page shows "[Reward terms: to confirm]" after a purchase, `/shop/` shows the blog archive layout, and shop buyers do not reach Zoho CRM.
 2. **Email delivery** (item 3): send a WP Mail SMTP test and check SPF, DKIM and DMARC for ledgerplus.ae; check that the "New order" email reaches the sales team.
 3. **Test purchase:** one AED 1.00 live test (a 99.95% coupon, then delete it), then refund it from the order with "Refund via Geidea".
 4. **SEO:** check that Rank Math keeps cart, checkout and My Account out of search (noindex) and leaves product 890 and the product archives out of the sitemap.
@@ -117,9 +120,17 @@ These are on the Terms of Sale (page 895), the sales page 892, the cart and the 
 - **Compliance price:** the plan says "from AED 5,999 a year", but the Packages page says AED 499 a month.
 - **Deadline wording:** approve the corrected statements, and do not say Ledger Plus is a Ministry of Finance accredited provider unless it is (or name its partner).
 
-## Phase 2 (not built)
+## Phase 2
 
-- **Zoho CRM sync:** convert the demo lead, or create the Account, Contact and Closed Won Deal on each paid order.
+- **Zoho CRM sync: built in plugin 1.2.0 (F14), to be uploaded** (item 1: `plugin/ledgerplus-shop-1.2.0.zip`, "Replace current with uploaded", then the check list "After uploading 1.2.0" in `plugin/PLUGIN-README.md` section 7). What it does:
+  - it uses the site's existing Zoho connection (the "Elementor Pro Form Widget - Zoho CRM - Integration" add-on, which must stay active and connected) and writes to the module the website forms use, **Ledgers Plus**; no new keys;
+  - **one record per person**, found by the buyer's email: a new buyer gets a record (name, email, mobile, Lead Source "Website", Lead Form "Ledger Plus Shop", the usual owner, utm values, and a description with company, product, amount, order number, trade licence, VAT TRN and referral details); a buyer already in Zoho keeps their record and gets a note per order;
+  - Lead Status **Prospecting** while the order is not paid, **Closed Opportunity** once it is paid (an existing record is never set back to Prospecting, and nothing else of it is changed); Zoho's workflow rules run on every create and update;
+  - a Zoho note with the order and product details at checkout and one when the payment is confirmed;
+  - checkout and payment only queue a background job, so "Place order" and the Geidea payment are not slowed down; on the thank-you page of a paid order the sync runs first (at most 8 seconds), so the record is Closed Opportunity before the page is shown; if Zoho is slow or down, the page is shown as usual and the job finishes it, with retries after 5, 30 and 120 minutes;
+  - each order shows its Zoho record id, the Lead Status sent and any error in its "Ledger Plus" box, and the order action "Send to Zoho CRM again" sends an order now (also orders from before 1.2.0);
+  - at most 60 unpaid orders an hour are sent to Zoho (setting `zoho_open_per_hour`), so bots placing unpaid orders cannot fill the CRM or use up the Zoho API credits the website forms share; the others follow in the next hour, and paid orders are never held back;
+  - not sent to Zoho: later refunds and cancellations (change the record by hand); no Account, Contact or Deal is created.
 - **Automatic account creation:** needs an API in the Ledger Plus software.
 - **Tax invoices from the books:** issue them from the accounting system, as e-invoices from the go-live date.
 

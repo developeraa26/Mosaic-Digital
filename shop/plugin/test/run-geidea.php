@@ -836,6 +836,14 @@ ob_start();
 do_action( 'woocommerce_admin_order_data_after_billing_address', wc_get_order( 995 ) );
 $box = ob_get_clean();
 check( 'Geidea order without product 890: only the Geidea lines', false === strpos( $box, 'Trade licence:' ) && false !== strpos( $box, 'Geidea callback for this order:</strong> none received' ) && false !== strpos( $box, 'not saved yet' ) );
+// No callback recorded on the site yet. The site went from 1.1.0 straight to 1.1.2, so the line names no single version.
+$lp_last_cb = $GLOBALS['lp_test']['options'][ LP_Shop::GEIDEA_LAST_OPTION ] ?? null;
+unset( $GLOBALS['lp_test']['options'][ LP_Shop::GEIDEA_LAST_OPTION ] );
+$rows = array_column( LP_Shop::geidea_admin_rows( wc_get_order( 995 ) ), 1, 0 );
+check( 'no callback on this site yet: "none received since the Geidea safety net (Ledger Plus Shop 1.1.1 or later) was installed"', 'none received since the Geidea safety net (Ledger Plus Shop 1.1.1 or later) was installed' === ( $rows['Last Geidea callback on this site'] ?? '' ), (string) ( $rows['Last Geidea callback on this site'] ?? '' ) );
+if ( null !== $lp_last_cb ) {
+	$GLOBALS['lp_test']['options'][ LP_Shop::GEIDEA_LAST_OPTION ] = $lp_last_cb;
+}
 
 /* ---------------------------------------------------------------- */
 section( 'nothing sensitive stored or logged' );

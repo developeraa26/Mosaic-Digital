@@ -32,6 +32,11 @@ php run-geidea.php || rc=1
 php run-geidea.php "$tmp_snip" > /dev/null && echo "  PASS  run-geidea.php also with the WPCode snippet" || { echo "  FAIL  run-geidea.php with the WPCode snippet"; rc=1; }
 php run-geidea-http.php || rc=1
 php run-geidea-http.php "$tmp_snip" > /dev/null && echo "  PASS  run-geidea-http.php also with the WPCode snippet" || { echo "  FAIL  run-geidea-http.php with the WPCode snippet"; rc=1; }
+
+# F13 (1.1.2): reward wording, shop archive redirect, "What happens next" in the Completed order email,
+# against the plugin and the snippet (each run also checks the wp-config constants in a second process).
+php run-f13.php || rc=1
+php run-f13.php "$tmp_snip" > /dev/null && echo "  PASS  run-f13.php also with the WPCode snippet" || { echo "  FAIL  run-f13.php with the WPCode snippet"; rc=1; }
 rm -f "$tmp_snip"
 
 echo

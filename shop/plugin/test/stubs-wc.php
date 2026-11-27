@@ -332,6 +332,7 @@ class WC_Order extends WC_Data {
 	}
 	public function save_meta_data() {
 		$GLOBALS['lp_test']['orders'][ $this->id ]['meta'] = $this->meta;
+		$GLOBALS['lp_test']['meta_saves'][ $this->id ]     = ( $GLOBALS['lp_test']['meta_saves'][ $this->id ] ?? 0 ) + 1;
 	}
 	public function is_paid() {
 		return in_array( $this->status, array( 'processing', 'completed' ), true );
@@ -370,6 +371,24 @@ function wc_get_order_statuses() {
 }
 function is_order_received_page() {
 	return ! empty( $GLOBALS['lp_test']['order_received'] );
+}
+/* F13b: WooCommerce's page conditionals (includes/wc-conditional-functions.php:46-60, 145, 202). */
+function is_shop() {
+	return ! empty( $GLOBALS['lp_test']['is_shop'] );
+}
+function is_product_taxonomy() {
+	return ! empty( $GLOBALS['lp_test']['is_product_taxonomy'] );
+}
+/* includes/wc-page-functions.php: the page id of a WooCommerce page, -1 when none is set. */
+function wc_get_page_id( $page ) {
+	$pages = $GLOBALS['lp_test']['wc_pages'] ?? array( 'shop' => 885, 'cart' => 886, 'checkout' => 887, 'myaccount' => 888 );
+	return (int) ( $pages[ $page ] ?? -1 );
+}
+function is_account_page() {
+	return ! empty( $GLOBALS['lp_test']['is_account'] );
+}
+function is_checkout_pay_page( $use_query_params = false ) {
+	return ! empty( $GLOBALS['lp_test']['is_pay_page'] );
 }
 
 function wc_get_order( $id ) {

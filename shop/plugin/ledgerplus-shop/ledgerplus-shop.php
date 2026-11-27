@@ -2,8 +2,8 @@
 /**
  * Plugin Name:          Ledger Plus Shop
  * Plugin URI:           https://ledgerplus.ae/
- * Description:          WooCommerce add-ons for the Ledger Plus E-Invoicing Starter Package: AED symbol, trade licence and VAT TRN checkout fields, referral codes, referral wording on the cart and checkout, buy-now link safety, product page redirect, the thank-you "What happens next" block, Ledger Plus branded order emails and a Geidea payment safety net.
- * Version:              1.1.1
+ * Description:          WooCommerce add-ons for the Ledger Plus E-Invoicing Starter Package: AED symbol, trade licence and VAT TRN checkout fields, referral codes, referral wording on the cart and checkout, buy-now link safety, product page and shop archive redirects, the thank-you "What happens next" block, Ledger Plus branded order emails and a Geidea payment safety net.
+ * Version:              1.1.2
  * Requires at least:    6.5
  * Requires PHP:         8.1
  * Requires Plugins:     woocommerce
@@ -80,14 +80,15 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 	 */
 	final class LP_Shop {
 
-		const VERSION = '1.1.1';
+		const VERSION = '1.1.2';
 
 		/* ------------------------------------------------------------------
 		 * F8. Settings. Defaults here; override with a constant in
 		 * wp-config.php (LP_SHOP_PRODUCT_ID, LP_SHOP_SALES_PAGE_ID,
 		 * LP_SHOP_ADDON_PRODUCT_ID, LP_SHOP_PHONE_DISPLAY, LP_SHOP_PHONE_TEL,
-		 * LP_SHOP_WHATSAPP_URL, LP_SHOP_REWARD_TEXT, LP_SHOP_REWARD_TERMS) or
-		 * with the `lp_shop_settings` filter. See LP_Shop::settings().
+		 * LP_SHOP_WHATSAPP_URL, LP_SHOP_REWARD_TEXT, LP_SHOP_REWARD_TERMS,
+		 * LP_SHOP_REDIRECT_SHOP_ARCHIVE, LP_SHOP_GEIDEA_SAFETY_NET) or with the
+		 * `lp_shop_settings` filter. See LP_Shop::settings().
 		 * ------------------------------------------------------------------ */
 		const DEFAULT_PRODUCT_ID       = 890;
 		const DEFAULT_SALES_PAGE_ID    = 892;
@@ -97,8 +98,12 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 		const DEFAULT_WHATSAPP_URL     = 'https://wa.me/971503420832';
 		const DEFAULT_SUPPORT_EMAIL    = 'info@ledgerplus.ae';
 		const DEFAULT_PRICE_TEXT       = 'AED 1,999';
-		const DEFAULT_REWARD_TEXT      = 'you get AED 999 cash back after their payment is confirmed.';
-		const DEFAULT_REWARD_TERMS     = '[Reward terms: to confirm]';
+		// F13a. The confirmed referral rules (27 Nov 2026): AED 999 cash back once the referred business has
+		// paid; nothing if that order is refunded, cancelled or disputed. Payout method and timing are not
+		// confirmed, so the default text promises neither. Shown on the thank-you page, the My Account
+		// dashboard and the Processing / Completed order emails (HTML and plain text).
+		const DEFAULT_REWARD_TEXT      = 'you can receive AED 999 cash back after their payment is confirmed.';
+		const DEFAULT_REWARD_TERMS     = 'No cash back is due if their order is refunded, cancelled or disputed.';
 
 		/* Additional checkout fields (F2). Location "contact", group "other". */
 		const FIELD_TRADE_LICENCE = 'ledgerplus/trade-licence';
@@ -123,6 +128,8 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 		const META_TL_NORM        = '_lp_trade_licence_norm';
 		const META_CODE_INACTIVE  = '_lp_referral_code_inactive';
 		const META_ADMIN_NOTICE   = '_lp_admin_paid_notice_sent';
+		// F13c. 'yes' once the "What happens next" steps were put into a Processing order email for this order.
+		const META_NEXT_STEPS_EMAILED = '_lp_next_steps_emailed';
 
 		/* Coupon meta. */
 		const CMETA_REFERRAL       = '_lp_referral';
@@ -345,6 +352,9 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 
 			// F6. Product page redirect.
 			add_action( 'template_redirect', array( __CLASS__, 'maybe_redirect_product_page' ), 5 );
+			// F13b. Shop page and product taxonomy archives redirect (before wc_template_redirect at priority 10,
+			// includes/wc-template-functions.php:27-94).
+			add_action( 'template_redirect', array( __CLASS__, 'maybe_redirect_shop_archive' ), 5 );
 
 			// F12. Geidea payment safety net (setting geidea_safety_net; only orders paid with the "geidea" gateway).
 			// F12a. The Geidea callback (?wc-api=geidea). WooCommerce 11.3.1 fires woocommerce_api_request before
@@ -414,6 +424,9 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 				// Turn single features off without editing code.
 				'relabel_coupons'       => true,
 				'redirect_product_page' => true,
+				// F13b: the shop page (/shop/, the product archive) and product category / tag / attribute archives
+				// redirect to the sales page (also: define( 'LP_SHOP_REDIRECT_SHOP_ARCHIVE', false ); in wp-config.php).
+				'redirect_shop_archive' => (bool) self::constant_or( 'LP_SHOP_REDIRECT_SHOP_ARCHIVE', true ),
 				'require_paid_referrer' => true,
 				// Short admin email with the "Ledger Plus checks" when an on-hold order is paid (F3f follow-up).
 				'admin_paid_notice'     => true,
@@ -452,8 +465,9 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 			foreach ( array( 'phone_display', 'phone_tel', 'whatsapp_url', 'support_email', 'price_text', 'reward_text', 'reward_terms' ) as $key ) {
 				$settings[ $key ] = is_scalar( $settings[ $key ] ) ? (string) $settings[ $key ] : (string) $defaults[ $key ];
 			}
-			$wait                          = is_numeric( $settings['lock_wait_seconds'] ) ? (float) $settings['lock_wait_seconds'] : (float) $defaults['lock_wait_seconds'];
-			$settings['lock_wait_seconds'] = max( 0.0, min( 10.0, $wait ) );
+			$wait                              = is_numeric( $settings['lock_wait_seconds'] ) ? (float) $settings['lock_wait_seconds'] : (float) $defaults['lock_wait_seconds'];
+			$settings['lock_wait_seconds']     = max( 0.0, min( 10.0, $wait ) );
+			$settings['redirect_shop_archive'] = ! empty( $settings['redirect_shop_archive'] );
 
 			// F12.
 			$settings['geidea_safety_net'] = ! empty( $settings['geidea_safety_net'] );
@@ -1940,37 +1954,63 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 		 * ================================================================== */
 
 		/**
-		 * The customer's referral sentence as HTML.
+		 * The customer's referral sentence as HTML (thank-you page, My Account, the emails with F11 off).
+		 * With the defaults: "Your referral code: LP-XXXXXX. Share it with another business. When they buy
+		 * Ledger Plus with your code, you can receive AED 999 cash back after their payment is confirmed.
+		 * No cash back is due if their order is refunded, cancelled or disputed." A placeholder in the
+		 * terms is left out (reward_terms_text()).
 		 *
 		 * @param string $code Code.
 		 * @return string
 		 */
 		public static function referral_sentence_html( $code ) {
 			$s = self::settings();
-			return sprintf(
-				/* translators: 1: referral code, 2: reward text, 3: reward terms. */
-				esc_html__( 'Your referral code: %1$s. Share it with another business. When they buy Ledger Plus with your code, %2$s %3$s', 'ledgerplus-shop' ),
-				'<strong class="lp-shop-referral__code">' . esc_html( $code ) . '</strong>',
-				esc_html( $s['reward_text'] ),
-				esc_html( $s['reward_terms'] )
+			return rtrim(
+				sprintf(
+					/* translators: 1: referral code, 2: reward text, 3: reward terms. */
+					esc_html__( 'Your referral code: %1$s. Share it with another business. When they buy Ledger Plus with your code, %2$s %3$s', 'ledgerplus-shop' ),
+					'<strong class="lp-shop-referral__code">' . esc_html( $code ) . '</strong>',
+					esc_html( $s['reward_text'] ),
+					esc_html( self::reward_terms_text() )
+				)
 			);
 		}
 
 		/**
-		 * The customer's referral sentence as plain text.
+		 * The customer's referral sentence as plain text (same words as referral_sentence_html()).
 		 *
 		 * @param string $code Code.
 		 * @return string
 		 */
 		public static function referral_sentence_text( $code ) {
 			$s = self::settings();
-			return sprintf(
-				/* translators: 1: referral code, 2: reward text, 3: reward terms. */
-				__( 'Your referral code: %1$s. Share it with another business. When they buy Ledger Plus with your code, %2$s %3$s', 'ledgerplus-shop' ),
-				$code,
-				$s['reward_text'],
-				$s['reward_terms']
+			return rtrim(
+				sprintf(
+					/* translators: 1: referral code, 2: reward text, 3: reward terms. */
+					__( 'Your referral code: %1$s. Share it with another business. When they buy Ledger Plus with your code, %2$s %3$s', 'ledgerplus-shop' ),
+					$code,
+					$s['reward_text'],
+					self::reward_terms_text()
+				)
 			);
+		}
+
+		/**
+		 * F13a. The reward terms shown to customers (every page and email that shows the referral sentence).
+		 * A placeholder is left out, so a customer never sees an unfinished note: empty text, or text with a
+		 * part in square brackets, such as "[Reward terms: to confirm]" (the default before 1.1.2) or
+		 * "Paid by [payment method] within [X days]." (the site's own placeholder style). Set the terms with
+		 * LP_SHOP_REWARD_TERMS or the lp_shop_settings filter ('reward_terms').
+		 *
+		 * @return string Plain text ('' = no terms).
+		 */
+		public static function reward_terms_text() {
+			$s     = self::settings();
+			$terms = trim( (string) $s['reward_terms'] );
+			if ( '' === $terms || preg_match( '/\[[^\]]*\]/', $terms ) ) {
+				return '';
+			}
+			return $terms;
 		}
 
 		/**
@@ -1989,7 +2029,8 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 		}
 
 		/**
-		 * F7. The three "What happens next" steps (thank-you page and, with F11, the Processing order email).
+		 * F7. The three "What happens next" steps (thank-you page and, with F11, the Processing order email and,
+		 * F13c, the Completed order email).
 		 *
 		 * @return string[]
 		 */
@@ -2147,8 +2188,11 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 		/**
 		 * F3b + F3f (+ F11). woocommerce_email_order_meta ( $order, $sent_to_admin, $plain_text, $email ).
 		 *
-		 * Email branding off: the v1.0.0 output. On: the "What happens next" card (Processing order
-		 * email only), the "Your referral code" card and, for the admin, the "Ledger Plus checks" card.
+		 * Email branding off: the v1.0.0 output. On: the "What happens next" card, the "Your referral code"
+		 * card and, for the admin, the "Ledger Plus checks" card. "What happens next" is in the Processing
+		 * order email and (F13c) in the Completed order email when no Processing email with it went out for
+		 * the order: this site's Geidea setting takes paid orders straight from pending to completed, so the
+		 * Processing email is never sent. A Processing email with the steps sets META_NEXT_STEPS_EMAILED.
 		 * In the WooCommerce email preview (WooCommerce > Settings > Emails), whose dummy order has no
 		 * Ledger Plus product, the branded cards are shown with a sample code so the design can be checked.
 		 *
@@ -2186,22 +2230,71 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 						return;
 					}
 					$processing = ( 'customer_processing_order' === $id );
+					$steps      = $processing || ! self::next_steps_already_emailed( $order, $sample );
 					if ( $plain_text ) {
-						$out = $processing ? self::email_next_steps_text() : '';
+						$out = $steps ? self::email_next_steps_text() : '';
 						if ( '' !== $code ) {
 							$out .= "\n" . esc_html( wp_strip_all_tags( self::email_referral_text( $code ) ) ) . "\n\n";
 						}
 						echo $out; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- escaped above.
-						return;
+					} else {
+						$html  = $steps ? self::email_next_steps_html() : '';
+						$html .= ( '' !== $code ) ? self::email_referral_card_html( $code ) : '';
+						echo wp_kses_post( $html );
 					}
-					$html  = $processing ? self::email_next_steps_html() : '';
-					$html .= ( '' !== $code ) ? self::email_referral_card_html( $code ) : '';
-					echo wp_kses_post( $html );
+					if ( $processing ) {
+						self::mark_next_steps_emailed( $order, $sample );
+					}
 				} elseif ( 'new_order' === $id ) {
 					self::render_admin_email_block( $order, (bool) $plain_text );
 				}
 			} catch ( \Throwable $e ) {
 				self::log( 'Email block failed: ' . $e->getMessage() );
+			}
+		}
+
+		/**
+		 * F13c. True when a Processing order email with "What happens next" was already built for this order
+		 * (META_NEXT_STEPS_EMAILED), so the Completed order email leaves the steps out. The email's order object
+		 * can be older than the stored order (an object read before the Processing email of another request
+		 * saved the flag), so a missing flag is checked once more in the database. Never true in the email
+		 * preview or for an order without an id (WooCommerce's preview order keeps id 0,
+		 * src/Internal/Admin/EmailPreview/EmailPreview.php:380-390): the preview shows the steps.
+		 *
+		 * @param \WC_Order $order  Order.
+		 * @param bool      $sample The email preview's dummy order.
+		 * @return bool
+		 */
+		private static function next_steps_already_emailed( $order, $sample = false ) {
+			if ( $sample || self::is_email_preview() || (int) $order->get_id() <= 0 ) {
+				return false;
+			}
+			if ( 'yes' === (string) $order->get_meta( self::META_NEXT_STEPS_EMAILED, true ) ) {
+				return true;
+			}
+			$fresh = self::fresh_order( $order->get_id(), $order );
+			return ( $fresh instanceof \WC_Order ) && 'yes' === (string) $fresh->get_meta( self::META_NEXT_STEPS_EMAILED, true );
+		}
+
+		/**
+		 * F13c. Records that a Processing order email with "What happens next" was built for this order (order
+		 * meta META_NEXT_STEPS_EMAILED = 'yes', saved with save_meta_data() as for META_ADMIN_NOTICE). Not in the
+		 * email preview, not for an order without an id, and only once (the HTML and plain-text parts of a
+		 * multipart email, and a resent Processing email, find it set).
+		 *
+		 * @param \WC_Order $order  Order.
+		 * @param bool      $sample The email preview's dummy order.
+		 */
+		private static function mark_next_steps_emailed( $order, $sample = false ) {
+			if ( $sample || self::is_email_preview() || (int) $order->get_id() <= 0 ) {
+				return;
+			}
+			if ( 'yes' === (string) $order->get_meta( self::META_NEXT_STEPS_EMAILED, true ) ) {
+				return;
+			}
+			$order->update_meta_data( self::META_NEXT_STEPS_EMAILED, 'yes' );
+			if ( method_exists( $order, 'save_meta_data' ) ) {
+				$order->save_meta_data();
 			}
 		}
 
@@ -2436,19 +2529,14 @@ if ( ! class_exists( 'LP_Shop', false ) ) {
 		}
 
 		/**
-		 * Reward terms for the branded emails. A placeholder (the default "[Reward terms: to confirm]", or
-		 * any text wholly in square brackets) is left out, so customers never see an unfinished note. Set
-		 * the real terms with LP_SHOP_REWARD_TERMS or the lp_shop_settings filter ('reward_terms').
+		 * Reward terms for the branded emails: reward_terms_text() (a placeholder, i.e. empty text or text with
+		 * a part in square brackets, is left out). 1.1.1 also left out the default terms, which were a
+		 * placeholder until 1.1.2; the 1.1.2 default is real text and is shown.
 		 *
 		 * @return string Plain text ('' = no terms line).
 		 */
 		public static function email_reward_terms() {
-			$s     = self::settings();
-			$terms = trim( (string) $s['reward_terms'] );
-			if ( '' === $terms || self::DEFAULT_REWARD_TERMS === $terms || preg_match( '/^\[[^\]]*\]$/', $terms ) ) {
-				return '';
-			}
-			return $terms;
+			return self::reward_terms_text();
 		}
 
 		/**
@@ -2752,7 +2840,7 @@ CSS;
 		}
 
 		/**
-		 * F11. "What happens next" card for the Processing order email.
+		 * F11. "What happens next" card for the Processing order email (and F13c, the Completed order email).
 		 *
 		 * @return string HTML.
 		 */
@@ -2777,7 +2865,7 @@ CSS;
 		}
 
 		/**
-		 * F11. Plain-text "What happens next" for the Processing order email.
+		 * F11. Plain-text "What happens next" for the Processing order email (and F13c, the Completed order email).
 		 *
 		 * @return string Escaped text.
 		 */
@@ -2808,7 +2896,7 @@ CSS;
 				. '<td class="lp-email-code" bgcolor="#ffffff" style="' . esc_attr( self::email_text_style( 'padding:10px 18px;background-color:#ffffff;border:2px dashed #0f5cd8;border-radius:10px;font-size:26px;line-height:32px;font-weight:bold;letter-spacing:3px;color:#041950;' ) ) . '" data-lp-code="' . esc_attr( $code ) . '">' . esc_html( $code ) . '</td>' . "\n"
 				. '</tr></table>' . "\n";
 			$html .= '<p style="' . esc_attr( self::email_text_style( 'margin:14px 0 14px;font-size:15px;line-height:23px;color:#2c3651;' ) ) . '">'
-				/* translators: %s: reward text, e.g. "you get AED 999 cash back after their payment is confirmed." */
+				/* translators: %s: reward text, e.g. "you can receive AED 999 cash back after their payment is confirmed." */
 				. sprintf( esc_html__( 'Share it with another business. When they buy Ledger Plus with your code, %s', 'ledgerplus-shop' ), esc_html( $s['reward_text'] ) )
 				. ( '' !== $terms ? ' <span style="color:#5b6684;">' . esc_html( $terms ) . '</span>' : '' )
 				. '</p>' . "\n";
@@ -3079,34 +3167,133 @@ CSS;
 		}
 
 		/* ==================================================================
-		 * F6. Product page redirect
+		 * F6. Product page redirect, F13b. Shop archive redirect
 		 * ================================================================== */
 
 		/**
-		 * 302 from the product 890 page to the published sales page 892.
+		 * F6. 302 from the product 890 page to the published sales page 892.
 		 */
 		public static function maybe_redirect_product_page() {
-			// phpcs:disable WordPress.Security.NonceVerification.Recommended
-			if ( is_admin() || wp_doing_ajax() || ( function_exists( 'wp_doing_cron' ) && wp_doing_cron() ) || self::is_rest_request() ) {
-				return;
-			}
-			if ( is_feed() || is_preview() || ( function_exists( 'is_customize_preview' ) && is_customize_preview() ) || is_embed() ) {
-				return;
-			}
-			if ( isset( $_REQUEST['add-to-cart'] ) || isset( $_GET['elementor-preview'] ) || isset( $_GET['preview'] ) || isset( $_GET['preview_id'] ) ) {
-				return;
-			}
-			if ( ! is_singular( 'product' ) ) {
+			if ( ! self::redirect_allowed_here() || ! is_singular( 'product' ) ) {
 				return;
 			}
 			$s = self::settings();
 			if ( empty( $s['redirect_product_page'] ) || (int) get_queried_object_id() !== (int) $s['product_id'] ) {
 				return;
 			}
-			// Capability first; never cast the raw value (?lp_stay[]=1 must not raise "Array to string conversion").
-			if ( isset( $_GET['lp_stay'] ) && current_user_can( 'manage_woocommerce' ) && is_string( $_GET['lp_stay'] ) && '1' === wp_unslash( $_GET['lp_stay'] ) ) {
+			if ( self::stay_requested() ) {
 				return;
 			}
+			self::redirect_to_sales_page();
+		}
+
+		/**
+		 * F13b. 302 from the shop page (/shop/, page 885: the product post type archive, product search
+		 * included) and from every product taxonomy archive (product categories, tags, attributes, brands)
+		 * to the published sales page 892, with the same guards as F6. On this site those pages render under
+		 * an Elementor Pro archive template made for the blog. Cart, checkout (with its order-received and
+		 * order-pay endpoints) and My Account are never redirected, nor is the front page or the sales page.
+		 * Setting redirect_shop_archive (constant LP_SHOP_REDIRECT_SHOP_ARCHIVE).
+		 */
+		public static function maybe_redirect_shop_archive() {
+			if ( ! self::redirect_allowed_here() ) {
+				return;
+			}
+			$s = self::settings();
+			if ( empty( $s['redirect_shop_archive'] ) || ! self::is_shop_archive() ) {
+				return;
+			}
+			// Never the sales page itself (no loop, e.g. if sales_page_id were set to the shop page).
+			if ( (int) $s['sales_page_id'] > 0 && self::archive_shows_page( (int) $s['sales_page_id'] ) ) {
+				return;
+			}
+			if ( self::stay_requested() ) {
+				return;
+			}
+			self::redirect_to_sales_page();
+		}
+
+		/**
+		 * F13b. True on the shop page / product archive (is_shop(): is_post_type_archive( 'product' ) or the
+		 * shop page, includes/wc-conditional-functions.php:46-48) and on product taxonomy archives
+		 * (is_product_taxonomy(): is_tax( get_object_taxonomies( 'product' ) ), :58-60), but never on the cart,
+		 * the checkout (its order-received and order-pay endpoints included), My Account or the front page.
+		 *
+		 * @return bool
+		 */
+		public static function is_shop_archive() {
+			$shop = function_exists( 'is_shop' ) ? is_shop() : ( function_exists( 'is_post_type_archive' ) && is_post_type_archive( 'product' ) );
+			$tax  = function_exists( 'is_product_taxonomy' ) && is_product_taxonomy();
+			if ( ! $shop && ! $tax ) {
+				return false;
+			}
+			if ( self::is_cart_or_checkout() || ( function_exists( 'is_account_page' ) && is_account_page() ) ) {
+				return false;
+			}
+			if ( ( function_exists( 'is_order_received_page' ) && is_order_received_page() ) || ( function_exists( 'is_checkout_pay_page' ) && is_checkout_pay_page() ) ) {
+				return false;
+			}
+			// A shop on the front page (WC_Query::pre_get_posts(), includes/class-wc-query.php:384-417) is the
+			// home page: leave it alone.
+			if ( function_exists( 'is_front_page' ) && is_front_page() ) {
+				return false;
+			}
+			return true;
+		}
+
+		/**
+		 * F13b. True when this shop archive request shows page $page_id. The only page such a request shows is
+		 * the WooCommerce shop page: on /shop/ (and product search results) WC_Query::pre_get_posts() makes it
+		 * the queried object (includes/class-wc-query.php:422-453). A product category, tag or attribute archive
+		 * shows a term: get_queried_object_id() is then a term id, and term ids are counted apart from post ids
+		 * (term 892 is not page 892), so it is never compared with a page id.
+		 *
+		 * @param int $page_id Page id.
+		 * @return bool
+		 */
+		private static function archive_shows_page( $page_id ) {
+			return function_exists( 'is_shop' ) && is_shop() && function_exists( 'wc_get_page_id' ) && (int) wc_get_page_id( 'shop' ) === (int) $page_id;
+		}
+
+		/**
+		 * F6 / F13b guards: no redirect in the admin, AJAX, cron, REST, feeds, previews, the Customizer, embeds,
+		 * add-to-cart requests and the Elementor editor preview.
+		 *
+		 * @return bool
+		 */
+		private static function redirect_allowed_here() {
+			// phpcs:disable WordPress.Security.NonceVerification.Recommended
+			if ( is_admin() || wp_doing_ajax() || ( function_exists( 'wp_doing_cron' ) && wp_doing_cron() ) || self::is_rest_request() ) {
+				return false;
+			}
+			if ( is_feed() || is_preview() || ( function_exists( 'is_customize_preview' ) && is_customize_preview() ) || is_embed() ) {
+				return false;
+			}
+			if ( isset( $_REQUEST['add-to-cart'] ) || isset( $_GET['elementor-preview'] ) || isset( $_GET['preview'] ) || isset( $_GET['preview_id'] ) ) {
+				return false;
+			}
+			// phpcs:enable
+			return true;
+		}
+
+		/**
+		 * ?lp_stay=1 for a shop manager (manage_woocommerce): stay on the page.
+		 *
+		 * @return bool
+		 */
+		private static function stay_requested() {
+			// phpcs:disable WordPress.Security.NonceVerification.Recommended
+			// Capability first; never cast the raw value (?lp_stay[]=1 must not raise "Array to string conversion").
+			return isset( $_GET['lp_stay'] ) && current_user_can( 'manage_woocommerce' ) && is_string( $_GET['lp_stay'] ) && '1' === wp_unslash( $_GET['lp_stay'] );
+			// phpcs:enable
+		}
+
+		/**
+		 * 302 to the sales page (setting sales_page_id), only while it is published, keeping utm_*, gclid,
+		 * fbclid and msclkid. Does nothing when the page is not published or has no permalink.
+		 */
+		private static function redirect_to_sales_page() {
+			$s       = self::settings();
 			$page_id = (int) $s['sales_page_id'];
 			if ( $page_id <= 0 || 'publish' !== get_post_status( $page_id ) ) {
 				return;
@@ -3116,6 +3303,7 @@ CSS;
 				return;
 			}
 			$keep = array();
+			// phpcs:disable WordPress.Security.NonceVerification.Recommended
 			foreach ( $_GET as $key => $value ) {
 				if ( is_string( $key ) && is_string( $value ) && preg_match( '/^(utm_[a-z0-9_]+|gclid|fbclid|msclkid)$/', $key ) ) {
 					$keep[ $key ] = rawurlencode( sanitize_text_field( wp_unslash( $value ) ) );
@@ -4907,7 +5095,7 @@ CSS;
 			$last = function_exists( 'get_option' ) ? get_option( self::GEIDEA_LAST_OPTION, array() ) : array();
 			$site = ( is_array( $last ) && ! empty( $last['time'] ) )
 				? gmdate( 'Y-m-d H:i', (int) $last['time'] ) . ' UTC, ' . self::clean_text( $last['result'] ?? '', 200 )
-				: __( 'none received since Ledger Plus Shop 1.1.1 was installed', 'ledgerplus-shop' );
+				: __( 'none received since the Geidea safety net (Ledger Plus Shop 1.1.1 or later) was installed', 'ledgerplus-shop' );
 			$mine = (string) $order->get_meta( self::META_GD_LAST_CB, true );
 			$gid  = (string) $order->get_meta( self::GMETA_ORDER_ID, true );
 			$rows = array(

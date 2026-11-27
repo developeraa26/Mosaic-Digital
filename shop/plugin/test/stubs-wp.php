@@ -185,7 +185,7 @@ function wp_doing_ajax() {
 	return $GLOBALS['lp_test']['doing_ajax'];
 }
 function wp_doing_cron() {
-	return false;
+	return ! empty( $GLOBALS['lp_test']['doing_cron'] );
 }
 function is_user_logged_in() {
 	return $GLOBALS['lp_test']['logged_in'];
@@ -226,10 +226,13 @@ function is_preview() {
 	return $GLOBALS['lp_test']['is_preview'];
 }
 function is_embed() {
-	return false;
+	return ! empty( $GLOBALS['lp_test']['is_embed'] );
 }
 function is_customize_preview() {
-	return false;
+	return ! empty( $GLOBALS['lp_test']['is_customize'] );
+}
+function is_front_page() {
+	return ! empty( $GLOBALS['lp_test']['is_front_page'] );
 }
 class LP_Test_Redirect extends Exception {
 }

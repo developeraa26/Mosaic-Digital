@@ -433,7 +433,7 @@ do_action( 'woocommerce_thankyou', 101 );
 $ty = ob_get_clean();
 $code_b = wc_get_order( 101 )->get_meta( '_lp_referral_code' );
 check( 'thank-you: What happens next + 3 steps', false !== strpos( $ty, 'What happens next' ) && false !== strpos( $ty, 'Our team contacts you to create your Ledger Plus login.' ) && false !== strpos( $ty, 'We move your data into Ledger Plus.' ) && false !== strpos( $ty, 'We book your free onboarding.' ) );
-check( 'thank-you: referral sentence with code', false !== strpos( $ty, 'Your referral code: <strong class="lp-shop-referral__code">' . $code_b . '</strong>. Share it with another business. When they buy Ledger Plus with your code, you get AED 999 cash back after their payment is confirmed. [Reward terms: to confirm]' ) );
+check( 'thank-you: referral sentence with code (1.1.2 default reward text and terms)', false !== strpos( $ty, 'Your referral code: <strong class="lp-shop-referral__code">' . $code_b . '</strong>. Share it with another business. When they buy Ledger Plus with your code, you can receive AED 999 cash back after their payment is confirmed. No cash back is due if their order is refunded, cancelled or disputed.</p>' ) );
 check( 'thank-you: help line text + tel/wa links', 'Need help? Call or WhatsApp +971 50 342 0832.' === trim( strip_tags( preg_replace( '/.*(<p class="lp-shop-help">.*?<\/p>).*/s', '$1', $ty ) ) ) && false !== strpos( $ty, 'href="tel:+971503420832"' ) && false !== strpos( $ty, 'href="https://wa.me/971503420832"' ) );
 check( 'thank-you: lp-shop-* classes', false !== strpos( $ty, 'class="lp-shop lp-shop-thankyou lp-shop-thankyou--paid"' ) && false !== strpos( $ty, 'lp-shop-next__steps' ) && false === strpos( $ty, 'lp-shop-next__intro' ) );
 ob_start();
@@ -813,7 +813,7 @@ do_action( 'woocommerce_email_order_meta', wc_get_order( 101 ), false, false, $e
 $p_html = ob_get_clean();
 check( 'processing (HTML): "What happens next" card with the 3 steps', false !== strpos( $p_html, 'lp-email-next' ) && false !== strpos( $p_html, 'Our team contacts you to create your Ledger Plus login.' ) && false !== strpos( $p_html, 'We move your data into Ledger Plus.' ) && false !== strpos( $p_html, 'We book your free onboarding.' ) );
 check( 'processing (HTML): help line with tel: and WhatsApp links', false !== strpos( $p_html, 'href="tel:+971503420832"' ) && false !== strpos( $p_html, 'href="https://wa.me/971503420832"' ) );
-check( 'processing (HTML): referral card with the code on its own, then the reward text', false !== strpos( $p_html, 'lp-email-referral' ) && false !== strpos( $p_html, 'data-lp-code="' . $code_b . '"' ) && false !== strpos( $p_html, '>' . $code_b . '</td>' ) && false !== strpos( $p_html, 'Share it with another business. When they buy Ledger Plus with your code, you get AED 999 cash back after their payment is confirmed.' ) );
+check( 'processing (HTML): referral card with the code on its own, then the reward text', false !== strpos( $p_html, 'lp-email-referral' ) && false !== strpos( $p_html, 'data-lp-code="' . $code_b . '"' ) && false !== strpos( $p_html, '>' . $code_b . '</td>' ) && false !== strpos( $p_html, 'Share it with another business. When they buy Ledger Plus with your code, you can receive AED 999 cash back after their payment is confirmed. <span style="color:#5b6684;">No cash back is due if their order is refunded, cancelled or disputed.</span>' ) );
 check( 'processing (HTML): the default reward-terms placeholder is not shown to customers', false === strpos( $p_html, 'Reward terms' ) && false === strpos( $p_html, '[' ) );
 check( 'processing (HTML): steps before the code; v1.0.0 box gone', strpos( $p_html, 'lp-email-next' ) < strpos( $p_html, 'lp-email-referral' ) && false === strpos( $p_html, 'lp-shop-email-referral' ) );
 check( 'processing (HTML): tables with role=presentation, no <div>/<section>/<h2>', false !== strpos( $p_html, 'role="presentation"' ) && false === strpos( $p_html, '<div' ) && false === strpos( $p_html, '<section' ) && false === strpos( $p_html, '<h2' ) );
@@ -826,11 +826,11 @@ $em_p->id = 'customer_completed_order';
 ob_start();
 do_action( 'woocommerce_email_order_meta', wc_get_order( 101 ), false, false, $em_p );
 $c_html = ob_get_clean();
-check( 'completed (HTML): referral card, no steps', false !== strpos( $c_html, 'lp-email-referral' ) && false !== strpos( $c_html, $code_b ) && false === strpos( $c_html, 'lp-email-next' ) );
+check( 'completed (HTML, Processing email with the steps already built): referral card, no steps', false !== strpos( $c_html, 'lp-email-referral' ) && false !== strpos( $c_html, $code_b ) && false === strpos( $c_html, 'lp-email-next' ) );
 ob_start();
 do_action( 'woocommerce_email_order_meta', wc_get_order( 101 ), false, true, $em_p );
 $c_txt = ob_get_clean();
-check( 'completed (plain): the referral sentence only, without the terms placeholder', "\n" . 'Your referral code: ' . $code_b . '. Share it with another business. When they buy Ledger Plus with your code, you get AED 999 cash back after their payment is confirmed.' . "\n\n" === $c_txt );
+check( 'completed (plain, Processing email with the steps already built): the referral sentence with the 1.1.2 terms only', "\n" . 'Your referral code: ' . $code_b . '. Share it with another business. When they buy Ledger Plus with your code, you can receive AED 999 cash back after their payment is confirmed. No cash back is due if their order is refunded, cancelled or disputed.' . "\n\n" === $c_txt );
 // Processing order whose code is not there yet: steps only.
 $nc = WC_Order::make( 230, 'nocode@buyer.ae', 'processing', array( 890 ) );
 $em_p->id = 'customer_processing_order';
@@ -913,8 +913,12 @@ check( '"Payment confirmed" email uses the checks card', count( $mailer11->sent 
 section( 'F11 review fixes' );
 lp_branding( null );
 // Reward terms: placeholders hidden in the branded emails only; real terms shown.
-check( 'v1.0.0 sentence (thank-you page, My Account) still carries the configured terms', false !== strpos( LP_Shop::referral_sentence_html( 'LP-X' ), '[Reward terms: to confirm]' ) );
-check( 'email_reward_terms(): default placeholder -> empty', '' === LP_Shop::email_reward_terms() );
+check( 'v1.0.0 sentence (thank-you page, My Account) carries the configured terms (1.1.2 default)', false !== strpos( LP_Shop::referral_sentence_html( 'LP-X' ), 'No cash back is due if their order is refunded, cancelled or disputed.' ) );
+check( 'email_reward_terms(): 1.1.2 default terms are real text -> shown', 'No cash back is due if their order is refunded, cancelled or disputed.' === LP_Shop::email_reward_terms() );
+add_filter( 'lp_shop_settings', function ( $s ) { $s['reward_terms'] = '[Reward terms: to confirm]'; return $s; } );
+LP_Shop::reset_settings();
+check( 'email_reward_terms(): the 1.1.1 default placeholder -> empty', '' === LP_Shop::email_reward_terms() );
+lp_branding( null );
 add_filter( 'lp_shop_settings', function ( $s ) { $s['reward_terms'] = ' [Terms v2] '; return $s; } );
 LP_Shop::reset_settings();
 check( 'email_reward_terms(): any text wholly in [brackets] -> empty', '' === LP_Shop::email_reward_terms() && false === strpos( LP_Shop::email_referral_card_html( 'LP-X' ), 'Terms v2' ) );

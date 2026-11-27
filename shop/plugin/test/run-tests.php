@@ -987,7 +987,7 @@ $GLOBALS['lp_test']['options']['woocommerce_email_font_family'] = 'Bad';
 check( 'font: a stack with unsafe characters -> Helvetica stack', LP_Shop::EMAIL_FONT === LP_Shop::email_font() );
 $GLOBALS['lp_test']['options']['woocommerce_email_font_family'] = 'Comic';
 check( 'font: unknown font name -> Helvetica stack', LP_Shop::EMAIL_FONT === LP_Shop::email_font() );
-$GLOBALS['lp_test']['transients']['woocommerce_email_font_family'] = 'Georgia';
+set_transient( 'woocommerce_email_font_family', 'Georgia' ); // stubs-wp.php transient store (1.1.1).
 check( 'font: preview transient ignored outside the preview', LP_Shop::EMAIL_FONT === LP_Shop::email_font() );
 add_filter( 'woocommerce_is_email_preview', function () { return true; } );
 check( 'font: preview transient used in the email preview', $georgia === LP_Shop::email_font() );

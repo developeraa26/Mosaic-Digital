@@ -37,8 +37,8 @@ The copy follows the client plan. Two kinds of change were made, both to be appr
 
 ## Still to do on the site (needs the client or the site owner)
 
-1. **Ledger Plus Shop plugin:** 1.0.0 installed and active (24 Nov 2026). Version 1.1.0 adds the branded emails: upload `plugin/ledgerplus-shop-1.1.0.zip` the same way and choose "Replace current with uploaded". Use one route only, not both:
-   - **Plugin zip (recommended):** Plugins > Add New > Upload Plugin > `plugin/ledgerplus-shop-1.1.0.zip` > Activate.
+1. **Ledger Plus Shop plugin:** 1.1.0 is active on the site (27 Nov 2026). Version **1.1.1** adds the Geidea payment safety net (item 2): upload `plugin/ledgerplus-shop-1.1.1.zip` and choose "Replace current with uploaded". It also contains everything from 1.1.0 (branded emails). Use one route only, not both:
+   - **Plugin zip (recommended):** Plugins > Add New > Upload Plugin > `plugin/ledgerplus-shop-1.1.1.zip` > Activate.
    - **WPCode:** install the free WPCode plugin. The snippet `plugin/ledgerplus-shop-wpcode.php` is then added for you, switched off, and the site owner switches it on.
 
    The plugin adds:
@@ -48,10 +48,16 @@ The copy follows the client plan. Two kinds of change were made, both to be appr
    - referral wording on the cart and checkout;
    - a fix for the "you cannot add another" error;
    - a redirect from the product page to the purchase page;
-   - the thank-you page content.
+   - the thank-you page content;
+   - the branded order emails (1.1.0);
+   - the Geidea payment safety net (1.1.1, item 2).
 
    Details and a full test plan are in `plugin/PLUGIN-README.md`.
-2. **Payment gateway:** Geidea Online Payments is installed and enabled; it supports the block checkout. Stripe is installed but switched off. Before launch, run a test payment in Geidea test mode, confirm the order moves to "Processing", and check the referral code appears on the thank-you page and in the email.
+2. **Payment gateway (Geidea):** Geidea Online Payments 3.5.2 is installed and enabled (live UAE account); it supports the block checkout. Stripe is installed but switched off.
+   - **Problem found on 27 Nov 2026:** an AED 1.00 test card payment succeeded at Geidea, but the orders (939, 940) stayed "Pending payment" and the thank-you page offered "Pay" again. Geidea's plugin only marks an order paid when Geidea's server-to-server callback (`https://ledgerplus.ae/?wc-api=geidea`) reaches the site and is accepted; nothing from it was recorded for these orders.
+   - **Fix:** plugin 1.1.1 (feature F12). It checks the callback and records what the site answered Geidea, and when the callback does not come it asks Geidea's API itself (on the thank-you page, 2 to 120 minutes after checkout, and from the new order action "Check payment with Geidea"). Paid orders then move to **Completed** (Geidea's "success" setting on this site), so refunds through Geidea keep working.
+   - **After uploading 1.1.1:** follow the client test plan in `plugin/PLUGIN-README.md` section 7: re-check orders 939, 940 and 937 with the order action, make a new AED 1.00 test payment (the thank-you page must show the paid page with the referral code), read the callback diagnosis in the order's "Ledger Plus" box, and refund the test order from WooCommerce.
+   - **Still open with Geidea:** if the diagnosis shows the callback never arrives, or is refused ("Signature INVALID"), ask Geidea support to check the callback URL and the merchant key/API password for the UAE account, and ask the host whether a firewall blocks Geidea's POSTs.
 3. **Email delivery:** WP Mail SMTP is installed. Send a test email (WP Mail SMTP > Tools > Email Test) and make sure SPF and DKIM for ledgerplus.ae pass, so order emails do not land in spam.
 4. **Policy pages:** finish and publish the Terms of Sale and refund policy, then set them in WooCommerce > Settings > Advanced > Terms and conditions.
 5. **Test on staging, then launch:**

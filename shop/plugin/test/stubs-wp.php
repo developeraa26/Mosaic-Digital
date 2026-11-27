@@ -54,6 +54,31 @@ function add_action( $tag, $cb, $priority = 10, $args = 1 ) {
 function remove_all_filters( $tag ) {
 	unset( $GLOBALS['lp_test']['filters'][ $tag ] );
 }
+function remove_all_actions( $tag ) {
+	remove_all_filters( $tag );
+}
+function register_deactivation_hook( $file, $cb ) {
+	$GLOBALS['lp_test']['deactivation'][] = array( basename( $file ), $cb );
+}
+function remove_filter( $tag, $cb, $priority = 10 ) {
+	$removed = false;
+	foreach ( $GLOBALS['lp_test']['filters'][ $tag ][ $priority ] ?? array() as $i => $entry ) {
+		if ( $entry[0] === $cb ) {
+			unset( $GLOBALS['lp_test']['filters'][ $tag ][ $priority ][ $i ] );
+			$removed = true;
+		}
+	}
+	if ( isset( $GLOBALS['lp_test']['filters'][ $tag ][ $priority ] ) && ! $GLOBALS['lp_test']['filters'][ $tag ][ $priority ] ) {
+		unset( $GLOBALS['lp_test']['filters'][ $tag ][ $priority ] );
+	}
+	if ( isset( $GLOBALS['lp_test']['filters'][ $tag ] ) && ! $GLOBALS['lp_test']['filters'][ $tag ] ) {
+		unset( $GLOBALS['lp_test']['filters'][ $tag ] );
+	}
+	return $removed;
+}
+function remove_action( $tag, $cb, $priority = 10 ) {
+	return remove_filter( $tag, $cb, $priority );
+}
 function lp_test_hook_count( $tag ) {
 	$n = 0;
 	foreach ( $GLOBALS['lp_test']['filters'][ $tag ] ?? array() as $cbs ) {
@@ -94,6 +119,9 @@ function doing_action( $tag = null ) {
 }
 function has_filter( $tag ) {
 	return ! empty( $GLOBALS['lp_test']['filters'][ $tag ] );
+}
+function has_action( $tag ) {
+	return has_filter( $tag );
 }
 
 /* ---------------- i18n / escaping ---------------- */
@@ -234,6 +262,119 @@ if ( ! function_exists( 'add_option' ) ) {
 	}
 	function wp_cache_delete( $key, $group = '' ) {
 		return true;
+	}
+}
+
+/* ---------------- Transients (own store; expiry honoured, time can be shifted) ---------------- */
+
+function lp_test_now() {
+	return time() + (int) ( $GLOBALS['lp_test']['time_shift'] ?? 0 );
+}
+function get_transient( $k ) {
+	$t = $GLOBALS['lp_test']['transients'][ $k ] ?? null;
+	if ( ! $t || ( $t['exp'] && $t['exp'] <= lp_test_now() ) ) {
+		unset( $GLOBALS['lp_test']['transients'][ $k ] );
+		return false;
+	}
+	return $t['v'];
+}
+function set_transient( $k, $v, $ttl = 0 ) {
+	$GLOBALS['lp_test']['transients'][ $k ] = array(
+		'v'   => $v,
+		'exp' => $ttl ? lp_test_now() + (int) $ttl : 0,
+	);
+	return true;
+}
+function delete_transient( $k ) {
+	unset( $GLOBALS['lp_test']['transients'][ $k ] );
+	return true;
+}
+
+/* ---------------- HTTP API (mocked: $GLOBALS['lp_test']['http_handler']( $url, $args )) ---------------- */
+
+function wp_remote_get( $url, $args = array() ) {
+	$GLOBALS['lp_test']['http_log'][] = array( 'url' => $url, 'args' => $args, 'method' => 'GET' );
+	$h = $GLOBALS['lp_test']['http_handler'] ?? null;
+	if ( ! is_callable( $h ) ) {
+		return new WP_Error( 'http_request_failed', 'No test HTTP handler.' );
+	}
+	return call_user_func( $h, $url, $args );
+}
+function wp_remote_retrieve_response_code( $r ) {
+	return ( is_array( $r ) && isset( $r['response']['code'] ) ) ? (int) $r['response']['code'] : '';
+}
+function wp_remote_retrieve_body( $r ) {
+	return ( is_array( $r ) && isset( $r['body'] ) ) ? (string) $r['body'] : '';
+}
+function wp_remote_retrieve_header( $r, $name ) {
+	return ( is_array( $r ) && isset( $r['headers'][ strtolower( $name ) ] ) ) ? $r['headers'][ strtolower( $name ) ] : '';
+}
+function lp_test_http_json( $code, $data, $headers = array() ) {
+	return array(
+		'response' => array( 'code' => $code, 'message' => '' ),
+		'body'     => is_string( $data ) ? $data : json_encode( $data ),
+		'headers'  => array_change_key_case( $headers, CASE_LOWER ),
+	);
+}
+
+/* ---------------- URLs ---------------- */
+
+function home_url( $path = '' ) {
+	return 'https://ledgerplus.ae' . $path;
+}
+function site_url( $path = '' ) {
+	return 'https://ledgerplus.ae' . $path;
+}
+function get_site_url() {
+	return 'https://ledgerplus.ae';
+}
+function wp_parse_url( $url, $component = -1 ) {
+	return parse_url( $url, $component );
+}
+function sanitize_key( $k ) {
+	return preg_replace( '/[^a-z0-9_\-]/', '', strtolower( (string) $k ) );
+}
+
+/* ---------------- Action Scheduler (recorded in $GLOBALS['lp_test']['as']) ---------------- */
+
+function as_schedule_single_action( $timestamp, $hook, $args = array(), $group = '', $unique = false, $priority = 10 ) {
+	$GLOBALS['lp_test']['as'][] = array( 'time' => (int) $timestamp, 'hook' => $hook, 'args' => $args, 'group' => $group, 'status' => 'pending' );
+	return count( $GLOBALS['lp_test']['as'] );
+}
+function as_has_scheduled_action( $hook, $args = null, $group = '' ) {
+	foreach ( $GLOBALS['lp_test']['as'] ?? array() as $a ) {
+		if ( 'pending' === $a['status'] && $a['hook'] === $hook && ( null === $args || $a['args'] === $args ) && ( '' === $group || $a['group'] === $group ) ) {
+			return true;
+		}
+	}
+	return false;
+}
+/** as_unschedule_action(): cancels the next pending action with this hook, args and group (Action Scheduler 3.x). */
+function as_unschedule_action( $hook, $args = array(), $group = '' ) {
+	foreach ( $GLOBALS['lp_test']['as'] ?? array() as $i => $a ) {
+		if ( 'pending' === $a['status'] && $a['hook'] === $hook && $a['args'] === $args && ( '' === $group || $a['group'] === $group ) ) {
+			$GLOBALS['lp_test']['as'][ $i ]['status'] = 'canceled';
+			return $i + 1;
+		}
+	}
+	return null;
+}
+/** as_unschedule_all_actions(): with no args, every pending action of the hook. */
+function as_unschedule_all_actions( $hook, $args = array(), $group = '' ) {
+	foreach ( $GLOBALS['lp_test']['as'] ?? array() as $i => $a ) {
+		if ( 'pending' === $a['status'] && $a['hook'] === $hook && ( ! $args || $a['args'] === $args ) && ( '' === $group || $a['group'] === $group ) ) {
+			$GLOBALS['lp_test']['as'][ $i ]['status'] = 'canceled';
+		}
+	}
+}
+/** Runs the pending actions due at $now (like Action Scheduler: do_action_ref_array( $hook, array_values( $args ) )). */
+function lp_test_run_due_actions( $now ) {
+	foreach ( array_keys( $GLOBALS['lp_test']['as'] ?? array() ) as $i ) {
+		$a = $GLOBALS['lp_test']['as'][ $i ]; // Read now: an earlier action may have cancelled this one.
+		if ( 'pending' === $a['status'] && $a['time'] <= $now ) {
+			$GLOBALS['lp_test']['as'][ $i ]['status'] = 'complete';
+			do_action( $a['hook'], ...array_values( $a['args'] ) );
+		}
 	}
 }
 

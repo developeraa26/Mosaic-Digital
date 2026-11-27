@@ -10,6 +10,7 @@ define( 'WC_VERSION', '11.3.1' );
 class WooCommerce {
 	public $cart = null;
 	public $customer = null;
+	public $session = null;
 	public function is_store_api_request() {
 		return $GLOBALS['lp_test']['store_api'];
 	}
@@ -61,8 +62,21 @@ function WC() {
 }
 
 class LP_Test_Logger {
+	private function put( $level, $m, $ctx ) {
+		if ( 'ledgerplus-geidea' === ( $ctx['source'] ?? '' ) ) {
+			$GLOBALS['lp_test']['glogs'][] = $level . ': ' . $m;
+		} else {
+			$GLOBALS['lp_test']['logs'][] = $m;
+		}
+	}
 	public function warning( $m, $ctx = array() ) {
-		$GLOBALS['lp_test']['logs'][] = $m;
+		$this->put( 'warning', $m, $ctx );
+	}
+	public function info( $m, $ctx = array() ) {
+		$this->put( 'info', $m, $ctx );
+	}
+	public function error( $m, $ctx = array() ) {
+		$this->put( 'error', $m, $ctx );
 	}
 }
 function wc_get_logger() {
@@ -121,12 +135,20 @@ class LP_Test_Item {
 }
 
 class WC_Order extends WC_Data {
-	public $billing_email = '';
-	public $status        = 'pending';
-	public $product_ids   = array();
-	public $coupon_codes  = array();
-	public $customer_id   = 0;
-	public $date_paid     = null;
+	public $billing_email  = '';
+	public $status         = 'pending';
+	public $product_ids    = array();
+	public $coupon_codes   = array();
+	public $customer_id    = 0;
+	public $date_paid      = null;
+	public $payment_method = '';
+	public $total          = '1999.00';
+	public $currency       = 'AED';
+	public $order_key      = '';
+	public $created        = 0;
+	public $transaction_id = '';
+	public $type           = 'shop_order';
+	protected $status_transition = false;
 
 	public static function make( $id, $email, $status, $product_ids, $coupons = array(), $meta = array(), $customer_id = 0 ) {
 		$date_paid                           = in_array( $status, array( 'processing', 'completed' ), true ) ? time() - 3600 : null;
@@ -143,7 +165,143 @@ class WC_Order extends WC_Data {
 		$o->meta          = $row['meta'];
 		$o->customer_id   = $row['customer_id'];
 		$o->date_paid     = $row['date_paid'] ?? null;
+		$o->payment_method = $row['payment_method'] ?? '';
+		$o->total          = $row['total'] ?? '1999.00';
+		$o->currency       = $row['currency'] ?? 'AED';
+		$o->order_key      = $row['order_key'] ?? 'wc_order_key' . $row['id'];
+		$o->created        = $row['created'] ?? ( time() - 600 );
+		$o->transaction_id = $row['transaction_id'] ?? '';
+		$o->type           = $row['type'] ?? 'shop_order';
 		return $o;
+	}
+	/* ---- F12: the WC_Order API the Geidea safety net uses (modelled on includes/class-wc-order.php 11.3.1) ---- */
+	public function get_payment_method( $context = 'view' ) {
+		return $this->payment_method;
+	}
+	public function get_billing_phone( $context = 'view' ) {
+		return $GLOBALS['lp_test']['orders'][ $this->id ]['phone'] ?? '';
+	}
+	public function get_billing_first_name( $context = 'view' ) {
+		return $GLOBALS['lp_test']['orders'][ $this->id ]['first_name'] ?? '';
+	}
+	public function get_billing_last_name( $context = 'view' ) {
+		return $GLOBALS['lp_test']['orders'][ $this->id ]['last_name'] ?? '';
+	}
+	public function get_payment_method_title( $context = 'view' ) {
+		return 'geidea' === $this->payment_method ? 'Geidea Online Payments' : $this->payment_method;
+	}
+	public function get_total( $context = 'view' ) {
+		return $this->total;
+	}
+	public function get_currency( $context = 'view' ) {
+		return $this->currency;
+	}
+	public function get_order_key( $context = 'view' ) {
+		return $this->order_key;
+	}
+	public function get_date_created( $context = 'view' ) {
+		return $this->created ? new LP_Test_Date( $this->created ) : null;
+	}
+	public function get_transaction_id( $context = 'view' ) {
+		return $this->transaction_id;
+	}
+	public function set_transaction_id( $v ) {
+		$this->transaction_id = (string) $v;
+	}
+	public function get_type() {
+		return $this->type;
+	}
+	public function get_status( $context = 'view' ) {
+		return $this->status;
+	}
+	public function get_user_id( $context = 'view' ) {
+		return $this->customer_id;
+	}
+	public function get_customer_id( $context = 'view' ) {
+		return $this->customer_id;
+	}
+	public function needs_processing() {
+		return $GLOBALS['lp_test']['needs_processing'] ?? true; // Virtual, not downloadable: WooCommerce says processing.
+	}
+	public function set_status( $new_status, $note = '', $manual = false ) {
+		$new_status = preg_replace( '/^wc-/', '', (string) $new_status );
+		// abstracts/abstract-wc-order.php:942-957: an unregistered status becomes pending (auto-draft and trash excepted).
+		if ( ! array_key_exists( 'wc-' . $new_status, wc_get_order_statuses() ) && ! in_array( $new_status, array( 'auto-draft', 'trash' ), true ) ) {
+			$new_status = 'pending';
+		}
+		$from       = $this->status;
+		$this->status = $new_status;
+		if ( $from !== $new_status ) {
+			$this->status_transition = array(
+				'from' => ! empty( $this->status_transition['from'] ) ? $this->status_transition['from'] : $from,
+				'to'   => $new_status,
+				'note' => $note,
+			);
+			if ( null === $this->date_paid && in_array( $new_status, array( 'processing', 'completed' ), true ) ) {
+				$this->date_paid = time(); // maybe_set_date_paid()
+			}
+		}
+		return array( 'from' => $from, 'to' => $new_status );
+	}
+	public function update_status( $new_status, $note = '', $manual = false ) {
+		$this->set_status( $new_status, $note, $manual );
+		$this->save();
+		return true;
+	}
+	/** WC_Order::payment_complete() (includes/class-wc-order.php:138-209). */
+	public function payment_complete( $transaction_id = '' ) {
+		if ( ! $this->get_id() ) {
+			return false;
+		}
+		try {
+			do_action( 'woocommerce_pre_payment_complete', $this->get_id(), $transaction_id );
+			$valid = apply_filters( 'woocommerce_valid_order_statuses_for_payment_complete', array( 'on-hold', 'pending', 'failed', 'cancelled' ), $this );
+			if ( $this->has_status( $valid ) ) {
+				if ( ! empty( $transaction_id ) ) {
+					$this->set_transaction_id( $transaction_id );
+				}
+				if ( null === $this->date_paid ) {
+					$this->date_paid = time();
+				}
+				$next = apply_filters( 'woocommerce_payment_complete_order_status', $this->needs_processing() ? 'processing' : 'completed', $this->get_id(), $this );
+				$tid  = $this->get_transaction_id();
+				$this->set_status( $next, false );
+				$this->add_order_note( $tid ? sprintf( 'Payment via %1$s (%2$s).', $this->get_payment_method_title(), $tid ) : 'Payment complete.' );
+				$this->save();
+				do_action( 'woocommerce_payment_complete', $this->get_id(), $tid );
+			} else {
+				do_action( 'woocommerce_payment_complete_order_status_' . $this->get_status(), $this->get_id(), $transaction_id );
+			}
+		} catch ( Exception $e ) {
+			$this->add_order_note( 'Payment complete event failed. ' . $e->getMessage() );
+			return false;
+		}
+		return true;
+	}
+	/** Status transition after save (includes/class-wc-order.php:435-503): the flag is reset before the hooks. */
+	protected function status_transition() {
+		$t                       = $this->status_transition;
+		$this->status_transition = false;
+		if ( ! $t ) {
+			return;
+		}
+		$GLOBALS['lp_test']['transitions'][] = array( $this->id, $t['from'], $t['to'] );
+		do_action( 'woocommerce_order_status_' . $t['to'], $this->get_id(), $this, $t );
+		if ( false !== $t['note'] ) {
+			$this->add_order_note( trim( 'Order status changed from ' . ucfirst( $t['from'] ) . ' to ' . ucfirst( $t['to'] ) . '. ' . $t['note'] ) );
+		}
+		do_action( 'woocommerce_order_status_' . $t['from'] . '_to_' . $t['to'], $this->get_id(), $this );
+		do_action( 'woocommerce_order_status_changed', $this->get_id(), $t['from'], $t['to'], $this );
+	}
+	/* Legacy order API used by Geidea Online Payments 3.5.2 (functions/PaymentComplete.php, ReturnHandler.php). */
+	public function __get( $key ) {
+		return 'id' === $key ? $this->id : null; // WC_Abstract_Legacy_Order::__get(): $order->id still works.
+	}
+	public function get_product_from_item( $item ) {
+		return wc_get_product( $item->get_product_id() );
+	}
+	public function reduce_order_stock() {
+		$GLOBALS['lp_test']['stock_reduced'][ $this->id ] = ( $GLOBALS['lp_test']['stock_reduced'][ $this->id ] ?? 0 ) + 1;
 	}
 	public function get_billing_email( $context = 'view' ) {
 		return $this->billing_email;
@@ -186,15 +344,39 @@ class WC_Order extends WC_Data {
 		return count( $GLOBALS['lp_test']['notes'][ $this->id ] );
 	}
 	public function save() {
+		if ( function_exists( 'adv_point' ) ) {
+			adv_point( 'order_save' );
+		}
 		$GLOBALS['lp_test']['orders'][ $this->id ]['meta']   = $this->meta;
 		$GLOBALS['lp_test']['orders'][ $this->id ]['status'] = $this->status;
+		$GLOBALS['lp_test']['orders'][ $this->id ]['date_paid']      = $this->date_paid;
+		$GLOBALS['lp_test']['orders'][ $this->id ]['transaction_id'] = $this->transaction_id;
 		$GLOBALS['lp_test']['saves'][ $this->id ]            = ( $GLOBALS['lp_test']['saves'][ $this->id ] ?? 0 ) + 1;
+		$this->status_transition();
 		return $this->id;
 	}
 }
 
+function wc_get_order_status_name( $status ) {
+	$names = array( 'pending' => 'Pending payment', 'processing' => 'Processing', 'on-hold' => 'On hold', 'completed' => 'Completed', 'cancelled' => 'Cancelled', 'refunded' => 'Refunded', 'failed' => 'Failed' );
+	$status = preg_replace( '/^wc-/', '', (string) $status );
+	return $names[ $status ] ?? $status;
+}
+function wc_get_is_paid_statuses() {
+	return apply_filters( 'woocommerce_order_is_paid_statuses', array( 'processing', 'completed' ) );
+}
+function wc_get_order_statuses() {
+	return array( 'wc-pending' => 'Pending payment', 'wc-processing' => 'Processing', 'wc-on-hold' => 'On hold', 'wc-completed' => 'Completed', 'wc-cancelled' => 'Cancelled', 'wc-refunded' => 'Refunded', 'wc-failed' => 'Failed' );
+}
+function is_order_received_page() {
+	return ! empty( $GLOBALS['lp_test']['order_received'] );
+}
+
 function wc_get_order( $id ) {
 	$row = $GLOBALS['lp_test']['orders'][ (int) $id ] ?? null;
+	if ( $row ) {
+		apply_filters( 'woocommerce_order_class', 'WC_Order', $row['type'] ?? 'shop_order', (int) $id ); // class-wc-order-factory.php:304
+	}
 	return $row ? WC_Order::from_row( $row ) : false; // Always a fresh instance, like a real read.
 }
 
@@ -221,6 +403,9 @@ function wc_get_orders( $args ) {
 		}
 		if ( isset( $args['customer_id'] ) && (int) $o->customer_id !== (int) $args['customer_id'] ) {
 			continue;
+		}
+		if ( isset( $args['meta_key'] ) && ( ! isset( $args['meta_value'] ) || (string) $o->get_meta( $args['meta_key'] ) !== (string) $args['meta_value'] ) ) {
+			continue; // meta_key / meta_value shortcut (OrdersTableQuery.php:313-331; WP_Query for posts storage).
 		}
 		if ( ! empty( $args['meta_query'] ) ) {
 			$mq  = $args['meta_query'];
@@ -385,6 +570,11 @@ function get_posts( $args ) {
 }
 
 class WC_Cart {
+	public $emptied  = 0;
+	public function empty_cart( $clear_persistent_cart = true ) {
+		$this->emptied++;
+		$this->contents = array();
+	}
 	public $contents = array();
 	public $customer = null;
 	public $applied  = array();
@@ -420,6 +610,12 @@ class LP_Test_Product {
 	}
 	public function is_sold_individually() {
 		return $this->sold_individually;
+	}
+	public function is_virtual() {
+		return true;
+	}
+	public function is_downloadable() {
+		return false;
 	}
 }
 function wc_get_product( $id ) {

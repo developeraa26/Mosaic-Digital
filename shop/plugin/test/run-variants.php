@@ -9,6 +9,7 @@
  *   old-wc              WooCommerce 8.9: treated as missing
  *   no-abspath          snippet eval()'d without ABSPATH: does nothing
  *   blocks-api          field values read through CheckoutFields::get_field_from_object()
+ *   twin-sync           the snippet's code is the plugin's shared core byte for byte; versions agree
  */
 
 $mode    = $argv[1] ?? '';
@@ -116,6 +117,22 @@ switch ( $mode ) {
 		vcheck( 'API called with (key, object, "other")', array( 'ledgerplus/trade-licence', 200, 'other' ) === ( $GLOBALS['lp_api_calls'][0] ?? null ) );
 		$GLOBALS['lp_api_throw'] = true;
 		vcheck( 'API exception -> raw meta fallback', 'CN-77' === LP_Shop::get_field_value( $o, 'ledgerplus/trade-licence' ) );
+		break;
+
+	case 'twin-sync':
+		$p_src  = file_get_contents( $plugin );
+		$marker = "/*\n * Ledger Plus Shop - shared core.";
+		$core_p = substr( $p_src, (int) strpos( $p_src, $marker ) );
+		$core_s = substr( $snippet, (int) strpos( $snippet, $marker ) );
+		preg_match( "/const VERSION = '([0-9.]+)';/", $core_p, $vm );
+		$version = $vm[1] ?? '?';
+		vcheck( 'shared core found in both files', false !== strpos( $p_src, $marker ) && false !== strpos( $snippet, $marker ) );
+		vcheck( 'snippet core = plugin core, byte for byte', $core_p === $core_s );
+		vcheck( "plugin header Version = LP_Shop::VERSION ($version)", 1 === preg_match( '/^ \* Version:\s+' . preg_quote( $version, '/' ) . '$/m', $p_src ) );
+		vcheck( 'snippet header names the same version', 0 === strpos( $snippet, "/*\n * Ledger Plus Shop - WPCode snippet variant (v$version)." ) );
+		vcheck( 'the snippet adds only its header comment before the core', 1 === preg_match( '#^/\*.*?\*/\n$#s', substr( $snippet, 0, (int) strpos( $snippet, $marker ) ) ) );
+		$readme = (string) @file_get_contents( $build . '/PLUGIN-README.md' );
+		vcheck( "PLUGIN-README.md is for v$version", 0 === strpos( $readme, "# Ledger Plus Shop (v$version)" ) );
 		break;
 
 	default:

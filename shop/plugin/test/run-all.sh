@@ -14,16 +14,24 @@ rm -f "$tmp"
 
 php run-tests.php || rc=1
 node test-inline.js || rc=1
-for m in eval-twice plugin-then-snippet snippet-then-plugin no-wc old-wc no-abspath blocks-api; do
+for m in eval-twice plugin-then-snippet snippet-then-plugin no-wc old-wc no-abspath blocks-api twin-sync; do
   php run-variants.php "$m" || rc=1
 done
 # Concurrency (Fibers + WordPress 7.1.5 option model), against the plugin and the snippet.
 tmp_snip=$(mktemp --suffix=.php)
 { echo '<?php'; cat "$B/ledgerplus-shop-wpcode.php"; } > "$tmp_snip"
-for s in same-second next-second stale-takeover stale-worst webhook-thankyou; do
+for s in same-second next-second stale-takeover stale-worst webhook-thankyou geidea-callback-thankyou geidea-thankyou-scheduled; do
   php run-race.php "$s" || rc=1
 done
 php run-race.php stale-worst "$tmp_snip" > /dev/null && echo "  PASS  stale-worst also with the WPCode snippet" || { echo "  FAIL  stale-worst with the WPCode snippet"; rc=1; }
+php run-race.php geidea-callback-thankyou "$tmp_snip" > /dev/null && echo "  PASS  geidea-callback-thankyou also with the WPCode snippet" || { echo "  FAIL  geidea-callback-thankyou with the WPCode snippet"; rc=1; }
+
+# F12 Geidea payment safety net: in-process (stubs, mocked Geidea API) and end to end through PHP's built-in
+# server (real php://input, output buffer, die() and shutdown order), against the plugin and the snippet.
+php run-geidea.php || rc=1
+php run-geidea.php "$tmp_snip" > /dev/null && echo "  PASS  run-geidea.php also with the WPCode snippet" || { echo "  FAIL  run-geidea.php with the WPCode snippet"; rc=1; }
+php run-geidea-http.php || rc=1
+php run-geidea-http.php "$tmp_snip" > /dev/null && echo "  PASS  run-geidea-http.php also with the WPCode snippet" || { echo "  FAIL  run-geidea-http.php with the WPCode snippet"; rc=1; }
 rm -f "$tmp_snip"
 
 echo

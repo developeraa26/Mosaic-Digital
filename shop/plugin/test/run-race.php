@@ -11,9 +11,13 @@
  *   stale-takeover   a stale lock from a dead request; both requests clear it at the same moment
  *   stale-worst      the residual case: both requests end up holding the lock (see the scenario)
  *   webhook-thankyou status hook (waits for the lock) vs. the thank-you page fallback
+ *   geidea-callback-thankyou  F12: the Geidea callback guard and the thank-you page lookup complete the same
+ *                             unpaid order at the same moment (both past the payment lock's existence check)
+ *   geidea-thankyou-scheduled F12: thank-you page lookup vs. a scheduled check, paused at every order save
  */
 require __DIR__ . '/stubs-options-wp715.php';
 require __DIR__ . '/stubs.php';
+require __DIR__ . '/geidea-fixtures.php';
 
 $scenario = $argv[1] ?? 'next-second';
 $plugin   = $argv[2] ?? dirname( __DIR__ ) . '/ledgerplus-shop/ledgerplus-shop.php';
@@ -89,6 +93,69 @@ $GLOBALS['adv']['suspend'] = array(
 	'delete_option:pre_delete' => true,
 	'coupon_lookup'            => true,
 );
+
+/* ---- F12 scenarios ---- */
+if ( 0 === strpos( $scenario, 'geidea-' ) ) {
+	$GLOBALS['adv']['db']['woocommerce_geidea_settings'] = lp_geidea_settings();
+	lp_make_geidea_order( 101 );
+	$GLOBALS['lp_test']['http_handler'] = function () {
+		if ( function_exists( 'adv_point' ) ) {
+			adv_point( 'http' );
+		}
+		return lp_test_http_json( 200, lp_geidea_lookup_body( array( lp_geidea_failed_order( 101 ), lp_geidea_order( 101 ) ) ) );
+	};
+	$GLOBALS['wp']                        = (object) array( 'query_vars' => array( 'order-received' => 101 ) );
+	$_GET                                 = array( 'key' => 'wc_order_key101' );
+	$GLOBALS['lp_test']['order_received'] = true;
+	$_SERVER['REQUEST_METHOD']            = 'POST';
+	$fib = function ( $name, $fn ) {
+		return new Fiber(
+			function () use ( $name, $fn ) {
+				$GLOBALS['adv']['cur'] = $name;
+				$fn();
+			}
+		);
+	};
+	$callback  = $fib( 'C', function () { LP_Shop::handle_geidea_callback( lp_geidea_callback_body( 101 ) ); } );
+	$thankyou  = $fib( 'T', function () { LP_Shop::maybe_check_geidea_on_thankyou(); } );
+	$scheduled = $fib( 'S', function () { LP_Shop::run_scheduled_geidea_check( 101, 1 ); } );
+	$GLOBALS['adv']['suspend'] = array(
+		'add_option:pre_insert'    => true,
+		'delete_option:pre_delete' => true,
+		'http'                     => true,
+		'order_save'               => true,
+	);
+	run_all( 'geidea-callback-thankyou' === $scenario ? array( $thankyou, $callback ) : array( $thankyou, $scheduled ) );
+
+	$row   = $GLOBALS['lp_test']['orders'][101];
+	$trans = array_values( array_filter( $GLOBALS['lp_test']['transitions'] ?? array(), function ( $t ) { return 101 === $t[0]; } ) );
+	$notes = $GLOBALS['lp_test']['notes'][101] ?? array();
+	$count = function ( $needle ) use ( $notes ) {
+		return count( array_filter( $notes, function ( $n ) use ( $needle ) { return false !== strpos( $n, $needle ); } ) );
+	};
+	$live  = array_filter( $GLOBALS['lp_test']['coupons'], function ( $c ) { return 101 === ( $c['meta']['_lp_referrer_order_id'] ?? 0 ) && 'publish' === $c['props']['status']; } );
+	echo "\n== race: $scenario ==\n";
+	echo '  trace: ' . implode( ' | ', array_filter( $GLOBALS['adv']['trace'], function ( $t ) { return false !== strpos( $t, 'INSERT lp_shop_gdlock' ) || false !== strpos( $t, 'http' ) || false !== strpos( $t, 'order_save' ); } ) ) . "\n";
+	echo '  status: ' . $row['status'] . ', transitions: ' . json_encode( $trans ) . "\n";
+	$fail = 0;
+	$ok   = function ( $name, $cond ) use ( &$fail ) {
+		echo ( $cond ? '  PASS  ' : '  FAIL  ' ) . $name . "\n";
+		if ( ! $cond ) {
+			$fail++;
+		}
+	};
+	$ok( 'order completed exactly once (one status transition, one "Payment via" note)', 'completed' === $row['status'] && array( array( 101, 'pending', 'completed' ) ) === $trans && 1 === $count( 'Payment via Geidea Online Payments' ) );
+	$ok( 'one "payment confirmed by Geidea" note', 1 === $count( 'Ledger Plus: payment confirmed by Geidea' ) );
+	$ok( 'Geidea meta set once, from the paid attempt', lp_geidea_order( 101 )['orderId'] === ( $row['meta']['Geidea Order Id'] ?? '' ) && lp_geidea_order( 101 )['orderId'] === ( $row['meta']['_lp_geidea_paid'] ?? '' ) );
+	$ok( 'F3 ran once: one live referral coupon, stored on the order', 1 === count( $live ) && strtoupper( reset( $live )['props']['code'] ) === ( $row['meta']['_lp_referral_code'] ?? '' ) );
+	$ok( 'payment and referral locks released', ! array_key_exists( 'lp_shop_gdlock_101', $GLOBALS['adv']['db'] ) && ! array_key_exists( 'lp_shop_gdlock_101_at', $GLOBALS['adv']['db'] ) && ! array_key_exists( 'lp_shop_lock_101', $GLOBALS['adv']['db'] ) );
+	$ok( 'no PHP errors', array() === $GLOBALS['errs'] );
+	foreach ( $GLOBALS['errs'] as $e ) {
+		echo "    $e\n";
+	}
+	echo '  Result: ' . ( $fail ? "$fail failed" : 'all passed' ) . "\n";
+	exit( $fail ? 1 : 0 );
+}
 
 switch ( $scenario ) {
 	case 'same-second':

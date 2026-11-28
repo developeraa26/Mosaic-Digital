@@ -46,7 +46,7 @@ final class LP_Calc_Elementor {
 	);
 
 	/**
-	 * The normalized selection and quote of the current request (set in actions_before).
+	 * The normalized selection and quote of the current request (set in process() and actions_before()).
 	 *
 	 * @var array|null
 	 */
@@ -432,8 +432,12 @@ final class LP_Calc_Elementor {
 
 	/**
 	 * Prices the record's selection and overwrites the quote fields, whatever the page (or a
-	 * tampered post) sent. Keeps the ref when this record already has a quote (process() and then
-	 * actions_before()); otherwise makes a new one. The visitor's quote_ref is never used.
+	 * tampered post) sent. The visitor's quote_ref is never used.
+	 *
+	 * When this record already has a quote (process() and then actions_before()), the same
+	 * selection, quote and ref are written again. The fields hold the plugin's own output by then,
+	 * so they are not normalized a second time: clean_text() decodes HTML entities on each pass, and
+	 * an "Other" activity such as "&amp;lt;b&amp;gt;" would pass once and fail twice.
 	 *
 	 * @param object $record Form record.
 	 * @return array|null The state (selection, quote, ref), or null when the selection is invalid.
@@ -441,15 +445,21 @@ final class LP_Calc_Elementor {
 	private static function write_quote( $record ) {
 		$previous    = self::$state;
 		self::$state = null;
+		$key         = spl_object_hash( $record );
 
-		$norm = LP_Calc_Pricing::normalize( self::raw_selection( self::values( $record ) ) );
-		if ( ! empty( $norm['errors'] ) ) {
-			return null;
+		if ( is_array( $previous ) && isset( $previous['record'], $previous['selection'], $previous['quote'], $previous['ref'] ) && $key === $previous['record'] ) {
+			$selection = $previous['selection'];
+			$quote     = $previous['quote'];
+			$ref       = $previous['ref'];
+		} else {
+			$norm = LP_Calc_Pricing::normalize( self::raw_selection( self::values( $record ) ) );
+			if ( ! empty( $norm['errors'] ) ) {
+				return null;
+			}
+			$selection = $norm['selection'];
+			$quote     = LP_Calc_Pricing::compute( $selection );
+			$ref       = self::make_ref();
 		}
-		$selection = $norm['selection'];
-		$quote     = LP_Calc_Pricing::compute( $selection );
-		$key       = spl_object_hash( $record );
-		$ref       = is_array( $previous ) && isset( $previous['record'], $previous['ref'] ) && $key === $previous['record'] ? $previous['ref'] : self::make_ref();
 
 		$services = (array) $selection['services'];
 		$updates  = array(
@@ -561,7 +571,11 @@ final class LP_Calc_Elementor {
 			}
 
 			if ( is_object( $ajax_handler ) && method_exists( $ajax_handler, 'add_response_data' ) ) {
-				$ajax_handler->add_response_data( 'lp_quote', self::response_data( $data, $sent ) );
+				// A form action failed (Elementor answers "Something went wrong. Please try again")
+				// and the client has no email: the page shows that error, so the response carries no
+				// figures either. With the client emailed, the page shows the result as usual.
+				$failed = isset( $ajax_handler->is_success ) && false === $ajax_handler->is_success;
+				$ajax_handler->add_response_data( 'lp_quote', self::response_data( $data, $sent, $sent || ! $failed ) );
 			}
 		} catch ( Throwable $e ) {
 			self::log( 'new_record failed: ' . self::describe( $e ) );
@@ -574,13 +588,15 @@ final class LP_Calc_Elementor {
 	/**
 	 * The `lp_quote` response data.
 	 *
-	 * @param array $data Quote data.
-	 * @param bool  $sent Whether the client email was sent.
+	 * @param array $data    Quote data.
+	 * @param bool  $sent    Whether the client email was sent.
+	 * @param bool  $figures Whether to include the lines and the total (false: `lines` is empty and
+	 *                       `total` is '', for a failed response the page shows as an error).
 	 * @return array
 	 */
-	public static function response_data( array $data, $sent ) {
+	public static function response_data( array $data, $sent, $figures = true ) {
 		$lines = array();
-		foreach ( $data['quote']['lines'] as $line ) {
+		foreach ( $figures ? $data['quote']['lines'] : array() as $line ) {
 			$lines[] = array(
 				'key'    => $line['key'],
 				'label'  => $line['label'],
@@ -591,7 +607,7 @@ final class LP_Calc_Elementor {
 		return array(
 			'ref'        => $data['ref'],
 			'lines'      => $lines,
-			'total'      => LP_Calc_Pricing::money( (int) $data['quote']['total'] ),
+			'total'      => $figures ? LP_Calc_Pricing::money( (int) $data['quote']['total'] ) : '',
 			'email'      => (string) $data['contact']['email'],
 			'email_sent' => (bool) $sent,
 		);

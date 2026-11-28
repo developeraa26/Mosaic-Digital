@@ -6,13 +6,17 @@
  *   - the assets the plugin enqueued (URL, version, dependencies, footer),
  *   - the Elementor Pro form widget built from page/out/page.json.
  *
- * php render.php [--editor] [--json] [--config-json] [--price-filter] [--query=utm_source=x&...]
- *   (default)       print the shortcode markup
- *   --editor        current user can edit_posts (editors-only notices)
- *   --json          print {shortcode, form, form_id, assets, early, head, footer, notices} as JSON
- *   --config-json   print the config the page gets (LP_Calc_Pricing::browser_config())
- *   --price-filter  an lp_calc_config filter changes the prices and hints, puts a price into a
- *                   service description and adds an unknown key, as a site owner might
+ * php render.php [--editor] [--json] [--config-json] [--price-filter] [--strict-filter] [--query=utm_source=x&...]
+ *   (default)        print the shortcode markup
+ *   --editor         current user can edit_posts (editors-only notices)
+ *   --json           print {shortcode, form, form_id, assets, early, head, footer, notices} as JSON
+ *   --config-json    print the config the page gets (LP_Calc_Pricing::browser_config())
+ *   --price-filter   an lp_calc_config filter changes the prices and hints, puts a price into a
+ *                    service description and adds an unknown key, as a site owner might
+ *   --strict-filter  an lp_calc_config filter writes prices into every text the page gets, in other
+ *                    spellings too: service labels and descriptions ("AED2,150", "dirhams", "Dhs",
+ *                    "Included", a bare filtered price), an added service, option labels and values,
+ *                    extra keys on the options, the defaults and the total label
  */
 require_once dirname( __DIR__ ) . '/wp/env.php';
 require_once dirname( __DIR__ ) . '/wp/elementor-form.php';
@@ -39,6 +43,33 @@ if ( in_array( '--price-filter', $args, true ) ) {
 			$config['services'][8]['description']   = 'One point of contact, at no extra charge.';
 			$config['price_list']                   = array( 'accounting' => 'AED 2,150' );
 			$config['defaults']['note']             = 'AED 650 per 1,000 transactions';
+			return $config;
+		}
+	);
+}
+
+if ( in_array( '--strict-filter', $args, true ) ) {
+	add_filter(
+		'lp_calc_config',
+		static function ( $config ) {
+			$config['prices']['accounting']       = 2150;
+			$config['services'][0]['label']       = 'Accounting (AED 2,150)';
+			$config['services'][0]['description'] = 'Bookkeeping all year, now AED2,150.';
+			$config['services'][1]['description'] = 'Reports from 2,150 dirhams.';
+			$config['services'][2]['description'] = 'VAT returns, from 2,150 a year.';
+			$config['services'][4]['description'] = 'Payroll runs, Dhs 1,000 a year.';
+			$config['services'][8]['description'] = 'One point of contact, Included.';
+			$config['services'][]                 = array( 'key' => 'audit', 'label' => 'External audit (AED 3,000)', 'description' => 'Annual audit.' );
+			foreach ( $config['transactions'] as $i => $t ) {
+				$config['transactions'][ $i ]['label'] = number_format( $t['value'] ) . ' transactions a year (AED ' . number_format( $t['value'] / 2 ) . ')';
+				$config['transactions'][ $i ]['price'] = $t['value'] / 2;
+			}
+			$config['employees'][1]['label']      = 'More than 20 employees (+AED 1,000)';
+			$config['statuses'][1]['label']       = 'Not registered (registration AED 500)';
+			$config['business_types'][0]['label'] = 'Trading, from AED 2,000';
+			$config['business_types'][]           = array( 'value' => 'Shipping (AED 9,999)', 'label' => 'Shipping' );
+			$config['defaults']['employees']      = 'AED 1,000';
+			$config['total_label']                = 'Estimated annual total in AED';
 			return $config;
 		}
 	);

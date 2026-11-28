@@ -18,7 +18,11 @@
  *   5. the rate limit (3 per email per 24 h, 5 per IP per hour) kicks in;
  *   6. with the figure fields empty, the figures still reach Zoho and the team email when the
  *      actions_before filter does not run (the plugin also writes them at elementor_pro/forms/process),
- *      and the client email, PDF and result still get them when neither hook runs (state_from_record).
+ *      and the client email, PDF and result still get them when neither hook runs (state_from_record);
+ *   7. a failed action without the client email (Zoho throws, cap reached) sends no figures: the page
+ *      shows Elementor's error and no amount;
+ *   8. each run has its own state folder (calculator/test/out/e2e-state-*, removed after a green run),
+ *      so two runs at the same time do not reset each other.
  * Screenshots: calculator/test/out/e2e-*.png
  */
 'use strict';
@@ -33,7 +37,9 @@ const H = require('../ui/harness');
 const A = require('../ui/amounts');
 
 const OUT = path.join(H.TEST, 'out');
-const STATE = path.join(OUT, 'e2e');
+fs.mkdirSync(OUT, { recursive: true });
+/** This run's own state folder, so two runs at once (two people, two agents) do not reset each other. */
+const STATE = fs.mkdtempSync(path.join(OUT, 'e2e-state-'));
 const ROUTER = path.join(__dirname, 'router.php');
 const LIMIT_MESSAGE = 'You have requested several quotations already. Please try again later or email info@ledgerplus.ae.';
 const UTM = { utm_source: 'e2e-source', utm_medium: 'e2e-medium', utm_campaign: 'e2e-campaign', utm_term: 'e2e-term', utm_keyword: 'e2e-keyword' };
@@ -89,13 +95,13 @@ function freePort() {
 	});
 }
 
-async function startServer() {
-	fs.rmSync(STATE, { recursive: true, force: true });
-	fs.mkdirSync(STATE, { recursive: true });
-	fs.writeFileSync(path.join(STATE, 'shell.html'), H.buildShell({}));
+async function startServer(dir) {
+	dir = dir || STATE;
+	fs.mkdirSync(dir, { recursive: true });
+	fs.writeFileSync(path.join(dir, 'shell.html'), H.buildShell({}));
 	const port = await freePort();
 	const proc = spawn('php', ['-S', '127.0.0.1:' + port, ROUTER], {
-		env: Object.assign({}, process.env, { LP_E2E_STATE: STATE }),
+		env: Object.assign({}, process.env, { LP_E2E_STATE: dir }),
 		stdio: ['ignore', 'pipe', 'pipe']
 	});
 	let serverLog = '';
@@ -110,7 +116,7 @@ async function startServer() {
 		try {
 			const r = await fetch(base + '/__e2e/state');
 			if (r.ok) {
-				return { proc, base, log: function () {
+				return { proc, base, dir, log: function () {
 					return serverLog;
 				} };
 			}
@@ -496,6 +502,7 @@ async function tampered(browser, base) {
 	const st = await submitAndWait(page, base, before);
 	await page.waitForSelector('[data-lp-calc-result]:not([hidden])');
 	const req = st.requests[before];
+	eq(req.post.form_fields.quote_ref, '', 'the JS emptied the quote_ref set in the DOM before sending');
 	eq(req.post.form_fields.quote_total, 'AED 2', 'the tampered quote_total reached the server');
 	eq(req.post.form_fields.field_lead_form, 'Tampered lead form', 'the tampered field_lead_form reached the server');
 	eq(req.post.form_fields.lpc_reports, '99', 'the tampered lpc_reports reached the server');
@@ -730,7 +737,7 @@ async function rateLimit(browser, base, firstEmail) {
 }
 
 async function zohoFailure(browser, base) {
-	console.log('5. Zoho action throws (Elementor error response; plugin still answers and cleans up)');
+	console.log('5. Zoho action throws (Elementor error response; plugin still answers and cleans up), also with the client-email cap reached (no figures)');
 	// New state (the IP limit is used up by now); keep the earlier mail-* files for review.
 	await resetState(base, { zoho_throws: true, keep_files: true });
 	const s = await open(browser, base, { width: 390 });
@@ -751,6 +758,28 @@ async function zohoFailure(browser, base) {
 	eq((await page.locator('[data-lp-calc-count]').textContent()).trim(), 'QUOTATION SENT', 'header: quotation sent');
 	await shot(page, '390-zoho-failed');
 	await s.context.close();
+
+	// Zoho throws and the client cannot be emailed (site-wide cap): the page shows Elementor's error,
+	// and the response carries no figures for it to hide.
+	await resetState(base, { zoho_throws: true, email_cap_reached: true, keep_files: true });
+	const c = await open(browser, base, { width: 390 });
+	await toStep5(c.page, { business: 'Retail', tx: 1000, vat: 'registered', ct: 'registered', services: ['accounting', 'einvoicing'] });
+	await fillContact(c.page, { name: 'Test Customer', company: 'Test Trading LLC', email: 'zoho.cap@example.com', phone: '50 123 4567' });
+	const cst = await submitAndWait(c.page, base, 0);
+	const creq = cst.requests[0];
+	const cq = creq.response.data.data && creq.response.data.data.lp_quote;
+	eq(creq.response.success, false, 'Zoho failed, cap reached: Elementor reports the failed action');
+	check(cq && cq.email_sent === false && Array.isArray(cq.lines) && cq.lines.length === 0 && cq.total === '' && /^LPQ-\d{6}-[0-9A-F]{5}$/.test(cq.ref), 'Zoho failed, cap reached: lp_quote without lines and total', cq);
+	deq(A.findAmounts(JSON.stringify(creq.response)), [], 'Zoho failed, cap reached: no amount anywhere in the response');
+	eq(creq.mails.length, 0, 'Zoho failed, cap reached: no client email');
+	const csaved = creq.saved[0] || {};
+	check(csaved.quote_total === 'AED 2,500' && (creq.team_email[0] || {}).content.indexOf('AED 2,500') !== -1, 'Zoho failed, cap reached: the saved entry and the team email still have the figures', csaved.quote_total);
+	await c.page.waitForSelector('.lp-calc-form form > .elementor-message-danger');
+	check(!(await c.page.locator('[data-lp-calc-result]').isVisible()), 'Zoho failed, cap reached: no result screen');
+	eq((await c.page.locator('.lp-calc-form form > .elementor-message-danger').textContent()).trim(), 'Something went wrong. Please try again, or email info@ledgerplus.ae.', 'Zoho failed, cap reached: the error names info@ledgerplus.ae');
+	deq(await pageAmounts(c.page), [], 'Zoho failed, cap reached: no amount on the page');
+	deq(creq.tmp_after, [], 'Zoho failed, cap reached: temp dir empty');
+	await c.context.close();
 }
 
 async function hookPaths(browser, base) {
@@ -807,8 +836,22 @@ async function hookPaths(browser, base) {
 	deq(r.req.tmp_after, [], 'temp dir empty');
 }
 
+/** A second run, started now, gets its own state folder: resetting it leaves this run's state alone. */
+async function ownState(server) {
+	console.log('7. a second run at the same time has its own state');
+	const mine = (await state(server.base)).requests.length;
+	const other = await startServer(fs.mkdtempSync(path.join(OUT, 'e2e-state-')));
+	try {
+		await resetState(other.base);
+		check(other.dir !== server.dir && path.dirname(server.dir) === OUT && /^e2e-state-/.test(path.basename(server.dir)), 'each run has its own state folder', { mine: server.dir, other: other.dir });
+		check(mine > 0 && (await state(server.base)).requests.length === mine, 'the other run\'s reset leaves this run\'s recorded requests alone', mine);
+	} finally {
+		other.proc.kill();
+		fs.rmSync(other.dir, { recursive: true, force: true });
+	}
+}
+
 (async function main() {
-	fs.mkdirSync(OUT, { recursive: true });
 	const pageJson = JSON.parse(fs.readFileSync(path.join(H.CALC, 'page', 'out', 'page.json'), 'utf8'));
 	let formId = null;
 	(function walk(list) {
@@ -830,6 +873,7 @@ async function hookPaths(browser, base) {
 		await rateLimit(browser, server.base, CUSTOMER.email);
 		await zohoFailure(browser, server.base);
 		await hookPaths(browser, server.base);
+		await ownState(server);
 	} catch (e) {
 		failures++;
 		console.log('  ERROR ' + (e && e.stack ? e.stack : e));
@@ -837,6 +881,11 @@ async function hookPaths(browser, base) {
 	} finally {
 		await browser.close();
 		server.proc.kill();
+	}
+	if (failures) {
+		console.log('state kept for review: ' + STATE);
+	} else {
+		fs.rmSync(STATE, { recursive: true, force: true });
 	}
 	console.log('E2E: ' + passes + ' passed, ' + failures + ' failed');
 	process.exit(failures ? 1 : 0);

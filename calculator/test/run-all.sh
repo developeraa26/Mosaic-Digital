@@ -11,14 +11,16 @@
 #                new_record, mailer, PDF writer, shortcode output without amounts, uninstall)
 #                plus the sample PDFs (pdftotext, pdfinfo, pdftoppm -r 110, pypdf) and email shots
 #   3. no-prices test/ui/no-prices.test.js: the page source (shortcode, config JSON, form), calculator.js
-#                and calculator.css carry no amount, also with an lp_calc_config filter; the browser's
-#                "Your package" lines equal LP_Calc_Pricing::package_lines() for every selection
+#                and calculator.css carry no amount, also with lp_calc_config filters that write prices
+#                into the config and its texts; the browser's "Your package" lines equal
+#                LP_Calc_Pricing::package_lines() for every selection
 #   4. ui        test/ui/ui.test.js: Playwright on the real shortcode output + the page.json form; no
 #                amount anywhere before the result screen, at 1440-320 px (LP_UI_SHOTS=0 skips the
 #                screenshot matrix)
 #   5. e2e       test/e2e/run.sh: php -S with the real plugin, Elementor Pro's submission flow
 #                emulated from page.json, a full submission with empty figure fields, the server paths
-#                without actions_before, tampering, validation, rate limit
+#                without actions_before, tampering, validation, rate limit, failed actions; each run
+#                keeps its state in its own test/out/e2e-state-* folder, so two runs can overlap
 #
 # Outputs (screenshots, PDFs, e2e state) go to calculator/test/out/ (git-ignored).
 set -u

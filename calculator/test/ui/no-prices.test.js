@@ -4,11 +4,14 @@
  *   1. the amount scanner (amounts.js) itself;
  *   2. the page source: the real [lp_package_calculator] shortcode output (template + config JSON),
  *      the page.json form widget and the asset tags carry no amount (see amounts.js for the counts
- *      that are allowed), also when an lp_calc_config filter adds prices to the config;
+ *      that are allowed), also when an lp_calc_config filter adds prices to the config, and when one
+ *      writes prices into every label and description, in other spellings too ("AED2,150",
+ *      "dirhams", "Dhs", "Included", a bare filtered price);
  *   3. the config the page gets (LP_Calc_Pricing::browser_config()): no prices, currency, VAT rate or
  *      price hints, and no amount in any string;
- *   4. the real assets/calculator.js and calculator.css, and the plugin's readme.txt (a public file on
- *      most sites): no pricing code, no price keys, no amount;
+ *   4. the real assets/calculator.js and calculator.css (every content: value, also the last one of a
+ *      rule without ";"), and the plugin's readme.txt (a public file on most sites): no pricing code,
+ *      no price keys, no amount;
  *   5. "Your package" parity: for every selection (services x VAT x CT x employees x reports x
  *      transactions), calculator.js packageLines() equals LP_Calc_Pricing::package_lines(), lists the
  *      same services in the same order as the server's quote, and has no amount.
@@ -41,8 +44,10 @@ function eq(actual, expected, label) {
 
 /* 1. The scanner. */
 console.log('1. amount scanner');
-const must = ['AED 7,000', 'Total: 2,000', 'from 1500 a year', 'AED 500 per 1,000 transactions', 'Dedicated account manager Included', 'at no extra charge', '500', 'aed'];
-const mustNot = ['1,000 transactions a year', '50,000 transactions a year', '<option value="10000">', '{"value":1000,"label":"1,000 transactions a year"}', '"transactions":1000', '+971 50 342 0832', 'tel:+971503420832', 'Registration included if you are not registered.', 'Includes VAT registration', '4 reports a year', 'Up to 20 employees', 'font-weight:500;', 'width:20%', '5,000 transactions a year', 'lp-calc-1-svc-accounting'];
+const must = ['AED 7,000', 'Total: 2,000', 'from 1500 a year', 'AED 500 per 1,000 transactions', 'Dedicated account manager Included', 'at no extra charge', '500', 'aed', 'now AED2,150', 'from 2,150 dirhams', 'Dhs 1,000 a year',
+	// value="N" is allowed on the step 2 options and the lpc_transactions field only.
+	'<div data-price-value="2000">', '<span data-lp-calc-value="1000"></span>', '<input type="hidden" name="lp_total_value" value="2000">', '<input type="hidden" name="form_fields[quote_total]" value="2000">', '<option value="2000">2,000 transactions a year</option>'];
+const mustNot = ['1,000 transactions a year', '50,000 transactions a year', '<option value="10000">', '<select class="lp-calc__input" id="x" data-lp-calc-input="transactions"><option value="2000" selected>2,000 transactions a year</option></select>', '<input type="hidden" name="form_fields[lpc_transactions]" id="form-field-lpc_transactions" value="1000">', '{"value":1000,"label":"1,000 transactions a year"}', '"transactions":1000', '+971 50 342 0832', 'tel:+971503420832', 'Registration included if you are not registered.', 'Includes VAT registration', '4 reports a year', 'Up to 20 employees', 'font-weight:500;', 'width:20%', '5,000 transactions a year', 'lp-calc-1-svc-accounting', 'Daedalus Trading'];
 must.forEach(function (t) {
 	check(A.findAmounts(t).length > 0, 'scanner finds an amount in "' + t + '"');
 });
@@ -122,6 +127,29 @@ const fcfg = configOf(filtered.shortcode);
 check(fcfg && !('price_list' in fcfg) && !('note' in fcfg.defaults), 'filtered: unknown keys are not copied', fcfg && Object.keys(fcfg));
 check(fcfg && !('description' in fcfg.services[0]) && !('description' in fcfg.services[8]), 'filtered: descriptions that state a price are left out', fcfg && fcfg.services);
 
+console.log('   with an lp_calc_config filter that writes prices into every text, in other spellings too');
+const strict = source(['--strict-filter']);
+const ssrc = [strict.head, strict.shortcode, strict.form, strict.footer].join('\n');
+eq(A.findAmounts(ssrc), [], 'strict filter: page source has no amount');
+['2,150', '2150', 'External audit', '9,999', '(AED', '"price"'].forEach(function (n) {
+	check(ssrc.indexOf(n) === -1, 'strict filter: "' + n + '" is not in the page');
+});
+const scfg = configOf(strict.shortcode);
+eq(JSON.parse(H.php([path.join(H.UI, 'render.php'), '--config-json', '--strict-filter'], '', {})), scfg, 'strict filter: printed config = LP_Calc_Pricing::browser_config()');
+eq(scfg.services[0].label, 'Accounting and bookkeeping', 'strict filter: a priced service label falls back to the plugin label');
+eq([0, 1, 2, 4, 8].filter(function (i) {
+	return 'description' in scfg.services[i];
+}), [], 'strict filter: priced descriptions (AED2,150, dirhams, a bare filtered price, Dhs, Included) are left out');
+check(/<span class="lp-calc__service-desc" id="[^"]*-svc-accounting-desc">Bookkeeping and accounts kept up to date all year\.<\/span>/.test(strict.shortcode), 'strict filter: the card shows the template\'s own description instead');
+eq(scfg.services.map(function (x) {
+	return x.key;
+}), ['accounting', 'reports', 'vat', 'ct', 'payroll', 'expense', 'invoicing', 'einvoicing', 'account_manager'], 'strict filter: an added service with a priced label is left out');
+eq(scfg.transactions.map(function (o) {
+	return Object.keys(o).join(',') + '=' + o.label;
+})[0], 'value,label=1,000 transactions a year', 'strict filter: options carry value and label only, priced labels fall back');
+eq([scfg.employees[1].label, scfg.statuses[1].label, scfg.business_types[0].label, scfg.business_types.length], ['More than 20 employees', 'Not registered', 'Trading / Wholesale', 8], 'strict filter: employees, status and business labels fall back; an option with a priced value is left out');
+eq([scfg.defaults.employees, scfg.total_label], [undefined, 'Estimated annual total (incl. 5% VAT)'], 'strict filter: a priced default is dropped; a priced total label falls back');
+
 /* 4. The assets. */
 console.log('4. calculator.js, calculator.css and readme.txt');
 const js = fs.readFileSync(JS_FILE, 'utf8');
@@ -143,10 +171,20 @@ const readme = fs.readFileSync(path.join(H.PLUGIN, 'readme.txt'), 'utf8');
 eq(A.findAmounts(readme), [], 'readme.txt (public in the plugin folder): no amount');
 check(/^Stable tag: 1\.1\.0$/m.test(readme), 'readme.txt: Stable tag 1.1.0');
 const css = fs.readFileSync(CSS_FILE, 'utf8');
-const contents = (css.match(/content:\s*("[^"]*"|'[^']*'|[^;]+);/g) || []);
-check(contents.length > 0 && contents.every(function (c) {
+/** Every content: value of a stylesheet (comments removed), also the last one of a rule without ";". */
+function cssContents(text) {
+	return text.replace(/\/\*[\s\S]*?\*\//g, '').match(/content:\s*("[^"]*"|'[^']*'|[^;}]+?)\s*(?=[;}])/g) || [];
+}
+/** A content value is fine when it is empty, none, or text without a digit or an amount. */
+function contentOk(c) {
 	return A.findAmounts(c).length === 0 && !/\d/.test(c.replace(/^content:\s*/, ''));
-}), 'calculator.css: no amount in any content value', contents);
+}
+eq(['.a::after{content:" AED 500"}', '.a::after{content:" AED 500";}', '.a::after{color:red;content:"500"}', '.a::after{content:\'2,000\' }'].map(function (t) {
+	return cssContents(t).every(contentOk);
+}), [false, false, false, false], 'CSS check finds an amount in content:, with or without the last ";"');
+const contents = cssContents(css);
+check(contents.length === (css.replace(/\/\*[\s\S]*?\*\//g, '').match(/content:/g) || []).length, 'calculator.css: every content: value is checked', contents.length);
+check(contents.length > 0 && contents.every(contentOk), 'calculator.css: no amount in any content value', contents);
 ['lp-calc__bar', 'lp-calc__estimate', 'lp-calc__service-price', 'is-bar-open'].forEach(function (needle) {
 	check(css.indexOf(needle) === -1, 'calculator.css: no ' + needle + ' rules');
 });

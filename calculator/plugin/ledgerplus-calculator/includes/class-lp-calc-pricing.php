@@ -216,47 +216,140 @@ final class LP_Calc_Pricing {
 	 * The part of config() the page gets: the choices and their labels, without prices.
 	 *
 	 * Built from the filtered config(), so an `lp_calc_config` filter still applies first. Only the
-	 * keys below are copied. `prices`, `currency`, `vat_rate` and the service `hint` texts never
-	 * reach the page, and a service description that names the currency or an extra charge is
-	 * left out. The page shows prices only after the server has priced a submission.
+	 * keys below are copied, and of each option only `value` and `label`. `prices`, `currency`,
+	 * `vat_rate` and the service `hint` texts never reach the page. Every text that is copied (option
+	 * labels, service labels and descriptions, the total label) is checked with mentions_price():
+	 * - a priced description is left out (the template shows its own text);
+	 * - a priced label falls back to the plugin's own label for that value or service;
+	 * - an option or service the plugin does not know, with a priced label or value, is left out
+	 *   (the server accepts only its own choices, so it could not be sent anyway).
+	 * The page shows prices only after the server has priced a submission.
 	 *
 	 * @return array
 	 */
 	public static function browser_config() {
 		$config = self::config();
+		$prices = $config['prices'];
+		$clean  = static function ( $text ) use ( $prices ) {
+			return is_scalar( $text ) && ! is_bool( $text ) && '' !== trim( (string) $text ) && ! self::mentions_price( $text, $prices );
+		};
 		$out    = array();
+
 		foreach ( array( 'business_types', 'transactions', 'reports_options', 'employees', 'statuses' ) as $key ) {
 			if ( isset( $config[ $key ] ) && is_array( $config[ $key ] ) ) {
-				$out[ $key ] = $config[ $key ];
+				$out[ $key ] = self::browser_options( $key, $config[ $key ], $clean );
 			}
 		}
 
 		$out['services'] = array();
+		$labels          = self::service_labels();
 		$services        = isset( $config['services'] ) && is_array( $config['services'] ) ? $config['services'] : array();
 		foreach ( $services as $service ) {
-			if ( ! is_array( $service ) || empty( $service['key'] ) || ! is_scalar( $service['key'] ) ) {
+			if ( ! is_array( $service ) || empty( $service['key'] ) || ! is_scalar( $service['key'] ) || ! $clean( $service['key'] ) ) {
 				continue;
 			}
+			$key   = (string) $service['key'];
+			$label = isset( $service['label'] ) ? $service['label'] : $key;
+			if ( ! $clean( $label ) ) {
+				if ( ! isset( $labels[ $key ] ) ) {
+					continue; // A service a filter added, with a priced label.
+				}
+				$label = $labels[ $key ];
+			}
 			$item = array(
-				'key'   => (string) $service['key'],
-				'label' => isset( $service['label'] ) && is_scalar( $service['label'] ) ? (string) $service['label'] : (string) $service['key'],
+				'key'   => $key,
+				'label' => (string) $label,
 			);
-			if ( isset( $service['description'] ) && is_scalar( $service['description'] ) && '' !== (string) $service['description'] && ! self::mentions_price( $service['description'] ) ) {
+			if ( isset( $service['description'] ) && $clean( $service['description'] ) ) {
 				$item['description'] = (string) $service['description'];
 			}
 			$out['services'][] = $item;
 		}
 
+		// Defaults: only values the page offers.
 		$defaults        = isset( $config['defaults'] ) && is_array( $config['defaults'] ) ? $config['defaults'] : array();
+		$offered         = static function ( $key ) use ( $out ) {
+			return isset( $out[ $key ] ) ? array_map( 'strval', array_column( $out[ $key ], 'value' ) ) : array();
+		};
 		$out['defaults'] = array();
-		foreach ( array( 'transactions', 'employees', 'reports', 'services' ) as $key ) {
-			if ( isset( $defaults[ $key ] ) ) {
-				$out['defaults'][ $key ] = $defaults[ $key ];
-			}
+		if ( isset( $defaults['transactions'] ) && is_numeric( $defaults['transactions'] ) && in_array( (string) (int) $defaults['transactions'], $offered( 'transactions' ), true ) ) {
+			$out['defaults']['transactions'] = (int) $defaults['transactions'];
+		}
+		if ( isset( $defaults['employees'] ) && is_scalar( $defaults['employees'] ) && in_array( (string) $defaults['employees'], $offered( 'employees' ), true ) ) {
+			$out['defaults']['employees'] = (string) $defaults['employees'];
+		}
+		if ( isset( $defaults['reports'] ) && is_numeric( $defaults['reports'] ) && in_array( (int) $defaults['reports'], isset( $out['reports_options'] ) ? $out['reports_options'] : array(), true ) ) {
+			$out['defaults']['reports'] = (int) $defaults['reports'];
+		}
+		if ( isset( $defaults['services'] ) && is_array( $defaults['services'] ) ) {
+			$keys                         = array_column( $out['services'], 'key' );
+			$out['defaults']['services'] = array_values( array_filter( $defaults['services'], static function ( $k ) use ( $keys ) {
+				return is_string( $k ) && in_array( $k, $keys, true );
+			} ) );
 		}
 
 		// The label of the total on the result screen, next to the server's figures.
-		$out['total_label'] = isset( $config['total_label'] ) && is_scalar( $config['total_label'] ) && '' !== (string) $config['total_label'] ? (string) $config['total_label'] : self::TOTAL_LABEL;
+		$out['total_label'] = isset( $config['total_label'] ) && $clean( $config['total_label'] ) ? (string) $config['total_label'] : self::TOTAL_LABEL;
+		return $out;
+	}
+
+	/**
+	 * One option list of browser_config(): `value` and `label` of each option, nothing else.
+	 *
+	 * - reports_options: the numbers only (the page writes "N reports a year" itself).
+	 * - transactions: a numeric value. Other lists: a value without a price.
+	 * - A label with a price falls back to the plugin's own label for that value. An option the
+	 *   plugin does not know, with a priced label, is left out.
+	 *
+	 * @param string   $key   business_types|transactions|reports_options|employees|statuses.
+	 * @param array    $list  The list from config().
+	 * @param callable $clean Returns true for a non-empty text without a price.
+	 * @return array
+	 */
+	private static function browser_options( $key, array $list, $clean ) {
+		$out = array();
+		foreach ( $list as $item ) {
+			$value = is_array( $item ) && isset( $item['value'] ) ? $item['value'] : $item;
+			if ( ! is_scalar( $value ) || is_bool( $value ) || '' === (string) $value ) {
+				continue;
+			}
+			if ( 'reports_options' === $key ) {
+				if ( is_numeric( $value ) && (int) $value > 0 ) {
+					$out[] = (int) $value;
+				}
+				continue;
+			}
+			// A transaction count is a number by nature; any other value is text the page prints.
+			if ( 'transactions' === $key ? ! is_numeric( $value ) : ! $clean( $value ) ) {
+				continue;
+			}
+			$value = 'transactions' === $key ? (int) $value : (string) $value;
+			$given = is_array( $item ) && isset( $item['label'] );
+			$label = $given ? $item['label'] : null;
+			if ( ! $clean( $label ) ) {
+				switch ( $key ) {
+					case 'business_types':
+						$own = in_array( $value, self::BUSINESS_TYPES, true ) ? $value : null;
+						break;
+					case 'transactions':
+						$own = in_array( $value, self::TRANSACTIONS, true ) ? self::transactions_label( $value ) : null;
+						break;
+					case 'employees':
+						$own = in_array( $value, self::EMPLOYEES, true ) ? self::employees_label( $value ) : null;
+						break;
+					default: // statuses.
+						$own = in_array( $value, self::STATUSES, true ) ? self::status_label( $value ) : null;
+				}
+				if ( null === $own && $given ) {
+					continue; // An option a filter added, with a priced label.
+				}
+				$label = null !== $own ? $own : ( 'transactions' === $key ? self::transactions_label( $value ) : $value );
+			}
+			$out[] = array(
+				'value' => $value,
+				'label' => (string) $label,
+			);
+		}
 		return $out;
 	}
 
@@ -322,13 +415,40 @@ final class LP_Calc_Pricing {
 	}
 
 	/**
-	 * Does the text state a price: the currency code (AED) or an extra charge?
+	 * Does the text state a price? True when it has:
+	 * - a currency: "AED" (also "AED2,150"), "dirham", "Dh" or "Dhs", the sign "د.إ", USD, EUR, GBP,
+	 *   or $, € or £ before a number;
+	 * - a price word: "extra charge", "free of charge", "no charge", "per report", or "Included" with
+	 *   a capital I (the old price label; "Registration included" is scope, not a price);
+	 * - a non-zero price of default_prices() or of $prices written as "1,234" or "1234", not part of
+	 *   a longer number. A number followed by "%" or by "transactions", "employees" or "reports" is a
+	 *   count, not a price.
 	 *
-	 * @param mixed $text Text.
+	 * @param mixed      $text   Text.
+	 * @param array|null $prices Prices to look for as well, such as the filtered config()['prices'].
 	 * @return bool
 	 */
-	public static function mentions_price( $text ) {
-		return is_scalar( $text ) && 1 === preg_match( '/\b' . preg_quote( self::CURRENCY, '/' ) . '\b|extra charge|\bfree of charge\b/i', (string) $text );
+	public static function mentions_price( $text, $prices = null ) {
+		if ( ! is_scalar( $text ) || is_bool( $text ) ) {
+			return false;
+		}
+		$s = (string) $text;
+		if ( 1 === preg_match( '/\b(?:AED|USD|EUR|GBP)(?![a-z])|dirham|\bdhs?\b|د\.?\s*إ|[$€£]\s?\d|extra charge|free of charge|\bno charge\b|\bper report\b/iu', $s ) || 1 === preg_match( '/\bIncluded\b/', $s ) ) {
+			return true;
+		}
+		$values = array();
+		foreach ( array_merge( array_values( self::default_prices() ), is_array( $prices ) ? array_values( $prices ) : array() ) as $p ) {
+			if ( is_numeric( $p ) && (int) $p > 0 ) {
+				$values[ (int) $p ] = true;
+			}
+		}
+		foreach ( array_keys( $values ) as $p ) {
+			$re = '/(?<![\d.,])(?:' . preg_quote( number_format( $p ), '/' ) . '|' . $p . ')(?![\d%]|[.,]\d)(?!\s*(?:transactions?|employees?|reports?)\b)/i';
+			if ( 1 === preg_match( $re, $s ) ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**

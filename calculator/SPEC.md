@@ -122,9 +122,16 @@ There is no PDF download on the page. After a successful submit, the page shows 
   - Each service also has a `description` with no price ("One point of contact for your account.").
   - The whole array is filterable with `lp_calc_config`. Prices come only from `prices`. The server, the PDF and the emails use them; the page never gets them.
 - `LP_Calc_Pricing::browser_config(): array` is the part of the filtered `config()` the page gets:
-  - `business_types`, `transactions`, `reports_options`, `employees`, `statuses`, `defaults` (`transactions`, `employees`, `reports`, `services`) and `total_label`;
-  - `services` with `key`, `label` and `description` only. A description that names the currency or an extra charge (`mentions_price()`) is left out;
+  - `business_types`, `transactions`, `employees` and `statuses` with `value` and `label` only; `reports_options` as numbers;
+  - `services` with `key`, `label` and `description` only;
+  - `defaults` (`transactions`, `employees`, `reports`, `services`), each only if the page offers that value;
+  - `total_label`;
   - never `prices`, `currency`, `vat_rate`, `vat_included`, a `hint`, or any key a filter adds.
+  - Every text it copies is checked with `LP_Calc_Pricing::mentions_price($text, $prices)`. A text states a price when it has a currency ("AED", also "AED2,150", "dirham", "Dh"/"Dhs", "د.إ", USD, EUR, GBP, or $, €, £ before a number), a price word ("extra charge", "free of charge", "no charge", "per report", "Included" with a capital I), or a non-zero default or filtered price as "1,234" or "1234". A number followed by "%", "transactions", "employees" or "reports" is a count.
+    - A priced description is left out; the template shows its own text.
+    - A priced label falls back to the plugin's own label for that value or service.
+    - An option or service the plugin does not know, with a priced label or value, is left out. The server accepts only its own choices, so it could not be sent anyway.
+    - A priced `total_label` falls back to "Estimated annual total (incl. 5% VAT)".
 - `LP_Calc_Pricing::package_lines(array $selection, ?array $config): array` returns the step 5 "Your package" lines, `['key', 'label', 'detail']`, with no amount:
   - "Annual service" (accounting, expense, invoicing);
   - "4 reports a year" / "1 report a year";
@@ -204,7 +211,7 @@ Behaviour:
    - **Rate limit:** at most 5 calculator submissions per IP per hour, and 3 per email address per 24 hours. Use transients keyed by `lp_calc_rl_` plus the md5 of the IP or of the lowercased email. Count a submission only after validation passes. The limit message is "You have requested several quotations already. Please try again later or email info@ledgerplus.ae." The limits are filterable.
      - *Review addition:* the IP key is the IPv6 /64 network (IPv4 unchanged), and the email key is the canonical mailbox (lowercased, without a "+tag", Gmail dots removed). A site-wide cap (`global`, 30 client emails per hour, same filter) skips only the client email (`email_sent` false); the lead still goes to Zoho and the team.
    - *Review addition:* `name`, `company` and `business_other` must not contain `://`, `www.`, `@` or `mailto:` (PDF viewers turn them into links). Messages: "Please enter your name without a web or email address.", "Please enter your company name without a web or email address.", "Please describe your business activity without a web or email address." calculator.js applies the same rule, and strips spaces from the phone before submit (Elementor Pro's Tel field rejects them on the server).
-3. **`elementor_pro/forms/process`** (action at the end of `process_fields()`, priority 10), *1.1.0*: the same work as `actions_before` below, a first time. The page sends the figure fields empty, so the figures must be written before the actions run even if one of the two hooks does not run. `actions_before` then writes them again and keeps the ref.
+3. **`elementor_pro/forms/process`** (action at the end of `process_fields()`, priority 10), *1.1.0*: the same work as `actions_before` below, a first time. The page sends the figure fields empty, so the figures must be written before the actions run even if one of the two hooks does not run. `actions_before` then writes them again, with the same selection, quote and ref: it does not normalize the plugin's own output a second time (`clean_text()` decodes HTML entities on each pass, so an "Other" activity such as `&amp;lt;b&amp;gt;` would pass once and fail twice).
 4. **`elementor_pro/forms/record/actions_before`** (filter, priority 10):
    - Recompute the quote on the server and make a ref with the format `LPQ-YYMMDD-XXXXX` (UTC date plus 5 uppercase hex characters from `random_bytes`). A ref the visitor posts is never used.
    - Overwrite these field values with `update_field`:
@@ -225,7 +232,7 @@ Behaviour:
      [
        'ref',
        'lines' => [
-         ['label', 'detail', 'amount' => 'AED …'],
+         ['key', 'label', 'detail', 'amount' => 'AED …'],
          ...
        ],
        'total' => 'AED …',
@@ -233,6 +240,7 @@ Behaviour:
        'email_sent' => bool,
      ]
      ```
+   - *1.1.0 review:* when a form action failed (Elementor answers "Something went wrong. Please try again, or email info@ledgerplus.ae.") and the client email was not sent, `lines` is empty and `total` is '': the page shows that error, so the response carries no figures either. With the client emailed, the figures stay and the page shows the result (a retry would send a second lead and email).
    - Delete the temporary PDF file afterwards.
    - Log failures with `error_log('[lp-calc] …')` with no personal data.
 
@@ -297,7 +305,7 @@ The file name is `Ledger-Plus-Quotation-<ref>.pdf`.
 - Root: `<div class="lp-calc" data-lp-calc>`. Everything is scoped under `.lp-calc`, with class prefix `lp-calc__`.
 - **No amount before a successful submission** (1.1.0), at every width and in every state: steps 1-5, validation errors, a failed submission, the Elementor editor, without JavaScript, after "Start again". An amount is any currency figure or price label: "AED x", "Included" as a price, "From AED x", "x per report", totals, breakdowns. Counts are fine: "1,000 transactions a year", "4 reports a year", "Up to 20 employees".
 - Layout follows the sample:
-  - **Rail:** steps 1-5 and a "Need a hand?" help box (phone and email), sticky together beside the card on desktop. No estimate box.
+  - **Rail:** steps 1-5 and a "Need a hand?" help box (phone and email), sticky together beside the card on desktop. No estimate box. When the card scrolls into view, its top goes 16px below a fixed or sticky site header and never above the rail's sticky top (`--lp-sticky-top`, 104px); calculator.js sets `--lp-sticky-top` to that same offset, so the steps card and the main card stay level.
   - **Main card:** kicker, "STEP 0n / 05", progress bar, step panels and Back/Continue actions.
 - **Step 1, Business:** radio cards for the 8 types. "Other" reveals a required text input.
 - **Step 2, Volumes:** an "Annual transactions" select. Hint: "We use this to price your UAE e-invoicing."
@@ -320,7 +328,8 @@ The file name is `Ledger-Plus-Quotation-<ref>.pdf`.
   - Listen for `submit_success` on the form (jQuery event, with `response.data`; our data is at `.data.lp_quote`). As a fallback, use `jQuery(document).ajaxComplete` for `action=elementor_pro_forms_send_form` responses.
   - Replace the step-5 content with a result panel: "Thank you, {first name}. Your quotation {ref} is on its way to {email}." (with the "could not email your quotation just now" wording when `email_sent` is false). Then "Your quotation {ref}", the **server** total (navy, above the lines) and the server lines, "What happens next" and a "Start again" button. The heading gets the focus and the card scrolls into view; on a 390 x 844 phone the total is above the fold.
   - `email_sent` false (for example past the 30-an-hour cap): the price still shows, with that wording.
-  - `lp_quote` missing or without lines: no figures. "We have received your request. A Ledger Plus advisor will email your quotation to {email} shortly." and the "Your package" list.
+  - `lp_quote` missing or without lines: no figures. "We have received your request. A Ledger Plus advisor will email your quotation to {email} shortly." (with the ref after "request" when `lp_quote` has one), the "Your package" list, and the header "REQUEST RECEIVED".
+  - A failed response (`success` false): the result shows only if `lp_quote.email_sent` is true (a later action failed after the client was emailed). Otherwise the page shows Elementor's error and no figures.
   - "Start again" empties the result, resets the choices, rebuilds the package list and goes to step 1, with no amount anywhere.
   - No PDF download button.
 - **No form on the page:** editors see a notice that the "Ledger Plus package calculator" form widget is missing. Visitors see "Email info@ledgerplus.ae for a quotation".
@@ -411,10 +420,12 @@ Everything lives under `/home/user/Mosaic-Digital/calculator/test/`. It is runna
   - `actions_before` overwriting the fields;
   - `browser_config()` without prices, `config()` unchanged, and the shortcode output without amounts;
   - the quote fields on every server path when the page sends them empty: normal, without `actions_before`, without the process hook, and without both (`state_from_record`);
+  - the second pass (`actions_before` after `process`) reusing the record's quote, also for an "Other" activity with double-encoded entities;
   - `new_record` producing response data, a captured `wp_mail` call with the PDF attachment, and temp-file cleanup;
+  - a failed form action: `lp_quote` keeps the figures only when the client was emailed;
   - other forms left untouched.
 - **PDF:** generate sample PDFs (short, maximum, non-Latin name). `pdftotext` must show the expected strings, and `pdftoppm -r 110` PNGs are saved under `calculator/test/out/` for visual review.
-- **No prices** (replaces the 1.0.0 JS pricing parity): the real shortcode output, its config JSON, the form and the assets carry no amount (search for "AED" and every price of `default_prices()` as `1,234` and `1234`; transaction counts are the documented allowance), also with an `lp_calc_config` filter that adds prices. For every selection, calculator.js `packageLines()` equals `package_lines()` and lists the services of the server quote in the same order.
+- **No prices** (replaces the 1.0.0 JS pricing parity): the real shortcode output, its config JSON, the form and the assets carry no amount (search for "AED" in any spelling and every price of `default_prices()` as `1,234` and `1234`; the only allowance is transaction counts: their labels, `value="N"` on the step 2 options and the hidden `lpc_transactions` field, and the config's `"value":N`), also with an `lp_calc_config` filter that adds prices and one that writes them into every label and description. For every selection, calculator.js `packageLines()` equals `package_lines()` and lists the services of the server quote in the same order.
 - **UI:** a Playwright harness page that renders the real template through PHP CLI with stubs, plus markup that copies a real Elementor Pro form (use the live hero form markup in `/tmp/claude-0/-home-user-Mosaic-Digital/11279077-d7c0-513e-8725-04117a99ad61/scratchpad/faithful/body-to-hero.html` as the structural reference) and jQuery (`npm i jquery` inside `calculator/test`).
   - Drive all steps, validation errors, hidden-field values and a simulated `submit_success` with `lp_quote`.
   - At every width, scan the visible text and the whole DOM (attributes, the config script) for amounts on steps 1-5, after errors, a failed submission, in the editor, without JavaScript and after "Start again".

@@ -73,32 +73,63 @@ function quote( array $raw ) {
 }
 
 /**
- * Amounts in page text, by the rules of test/ui/amounts.js: "AED", a non-zero default price as
- * "1,234" or "1234", "Included" as a price label, "extra charge", "free of charge", "per report".
- * Allowed (counts, not prices): transaction volumes ("1,000 transactions a year", the option values
- * value="1000" and the config's "value":1000 / "transactions":1000).
+ * Amounts in page text, by the rules of test/ui/amounts.js: a currency ("AED", also "AED2,150",
+ * "dirham", "Dh"/"Dhs", "د.إ"), a non-zero default price as "1,234" or "1234", "Included" as a price
+ * label, "extra charge", "free of charge", "per report".
+ * Allowed (counts, not prices): transaction volumes ("1,000 transactions a year"), and a count as
+ * value="1000" on the step 2 select's <option>s and the hidden form_fields[lpc_transactions] field
+ * only, and as "value":1000 / "transactions":1000 in the config JSON.
  *
  * @param string $text Text or markup.
  * @return array The amounts found.
  */
 function lp_test_amounts( $text ) {
-	$tx   = LP_Calc_Pricing::TRANSACTIONS;
-	$s    = preg_replace_callback(
+	$tx    = LP_Calc_Pricing::TRANSACTIONS;
+	$count = function ( $tag ) use ( $tx ) {
+		return preg_replace_callback(
+			'/(\svalue=["\']?)(\d+)(?=["\'\s>])/',
+			function ( $m ) use ( $tx ) {
+				return in_array( (int) $m[2], $tx, true ) ? $m[1] . '#' : $m[0];
+			},
+			$tag
+		);
+	};
+	$s     = preg_replace_callback(
 		'/\b\d{1,3}(?:,\d{3})* transactions a year\b/',
 		function ( $m ) use ( $tx ) {
 			return in_array( (int) str_replace( ',', '', $m[0] ), $tx, true ) ? '# transactions a year' : $m[0];
 		},
 		(string) $text
 	);
-	$s    = preg_replace_callback(
-		'/(value=["\']?|"(?:value|transactions)":\s*)(\d+)/',
+	$s     = preg_replace_callback(
+		'#<select\b[^>]*\sdata-lp-calc-input="transactions"[^>]*>.*?</select>#s',
+		function ( $m ) use ( $count ) {
+			return preg_replace_callback(
+				'/<option\b[^>]*>/',
+				function ( $o ) use ( $count ) {
+					return $count( $o[0] );
+				},
+				$m[0]
+			);
+		},
+		$s
+	);
+	$s     = preg_replace_callback(
+		'/<input\b[^>]*\sname="form_fields\[lpc_transactions\]"[^>]*>/',
+		function ( $m ) use ( $count ) {
+			return $count( $m[0] );
+		},
+		$s
+	);
+	$s     = preg_replace_callback(
+		'/("(?:value|transactions)":\s*)(\d+)/',
 		function ( $m ) use ( $tx ) {
 			return in_array( (int) $m[2], $tx, true ) ? $m[1] . '#' : $m[0];
 		},
 		$s
 	);
 	$hits = array();
-	foreach ( array( '/\bAED\b/i', '/\bIncluded\b/', '/extra charge/i', '/free of charge/i', '/\bper report\b/i' ) as $re ) {
+	foreach ( array( '/\bAED(?![a-z])/i', '/dirham/i', '/\bdhs?\b/i', '/د\.?\s*إ/u', '/\bIncluded\b/', '/extra charge/i', '/free of charge/i', '/\bper report\b/i' ) as $re ) {
 		if ( preg_match( $re, $s, $m ) ) {
 			$hits[] = $m[0];
 		}
@@ -206,6 +237,54 @@ check( 'filtered: unknown keys (price_list, defaults.note) are not copied', ! is
 $bfs = implode( "\n", lp_test_strings( $bf ) ) . wp_json_encode( $bf );
 check( 'filtered: no amount and no filtered price', array() === lp_test_amounts( $bfs ) && false === strpos( $bfs, '2150' ) && false === strpos( $bfs, '2,150' ) && false === strpos( $bfs, '650' ) );
 check( 'mentions_price(): AED, extra charge; not scope words', LP_Calc_Pricing::mentions_price( 'From aed 500' ) && LP_Calc_Pricing::mentions_price( 'at no extra charge' ) && ! LP_Calc_Pricing::mentions_price( 'Registration included if you are not registered.' ) && ! LP_Calc_Pricing::mentions_price( 'Daedalus Trading' ) );
+$priced   = array( 'now AED2,150', 'from 2,150 dirhams', 'Dhs 1,000 a year', 'د.إ 900', 'One point of contact, Included.', 'AED 500 per report', 'Bookkeeping all year, from 2,000 a year.', 'Payroll from 1000 a year', 'USD 99', '$99 a month', 'at no charge' );
+$unpriced = array( '1,000 transactions a year', '50,000 transactions a year', 'Up to 20 employees', 'More than 20 employees', 'Estimated annual total (incl. 5% VAT)', 'Financial reports each quarter, 1 to 4 a year.', 'UAE e-invoicing, priced by your annual transactions.', 'One point of contact for your account.', 'Registration included if you are not registered.', 'Daedalus Trading', 'Retail', '4 reports a year' );
+check( 'mentions_price(): other spellings of a price', array() === array_values( array_filter( $priced, function ( $t ) { return ! LP_Calc_Pricing::mentions_price( $t ); } ) ), json_encode( array_values( array_filter( $priced, function ( $t ) { return ! LP_Calc_Pricing::mentions_price( $t ); } ) ) ) );
+check( 'mentions_price(): counts and the default texts are not prices', array() === array_values( array_filter( $unpriced, array( 'LP_Calc_Pricing', 'mentions_price' ) ) ), json_encode( array_values( array_filter( $unpriced, array( 'LP_Calc_Pricing', 'mentions_price' ) ) ) ) );
+check( 'mentions_price(): a filtered price as a bare number', LP_Calc_Pricing::mentions_price( 'Bookkeeping, 2,150 a year', array( 'accounting' => 2150 ) ) && ! LP_Calc_Pricing::mentions_price( 'Bookkeeping, 2,150 a year' ) );
+check( 'amount scanner: a price as value= outside the step 2 options and lpc_transactions is found', array() !== lp_test_amounts( '<div data-price-value="2000">' ) && array() !== lp_test_amounts( '<input type="hidden" name="lp_total_value" value="2000">' ) && array() !== lp_test_amounts( '<option value="2000">' ) && array() !== lp_test_amounts( 'now AED2,150' ) && array() !== lp_test_amounts( '2,150 dirhams' ) );
+check( 'amount scanner: the documented counts are allowed', array() === lp_test_amounts( '<select class="lp-calc__input" data-lp-calc-input="transactions"><option value="2000" selected>2,000 transactions a year</option></select><input type="hidden" name="form_fields[lpc_transactions]" value="1000">{"value":1000,"transactions":1000}' ) );
+
+// A site owner's filter that writes prices into every text the page gets.
+add_filter( 'lp_calc_config', $strict = function ( $cfg ) {
+	$cfg['prices']['accounting']               = 2150;
+	$cfg['services'][0]['label']               = 'Accounting (AED 2,150)';
+	$cfg['services'][0]['description']         = 'Bookkeeping all year, now AED2,150.';
+	$cfg['services'][1]['description']         = 'From 2,150 dirhams.';
+	$cfg['services'][4]['description']         = 'Payroll runs, Dhs 1,000 a year.';
+	$cfg['services'][8]['description']         = 'One point of contact, Included.';
+	$cfg['services'][]                         = array( 'key' => 'audit', 'label' => 'External audit (AED 3,000)', 'hint' => 'AED 3,000', 'description' => 'Annual audit.' );
+	$cfg['services'][]                         = array( 'key' => 'payroll_plus', 'label' => 'Payroll plus', 'price' => 700 );
+	foreach ( $cfg['transactions'] as $i => $t ) {
+		$cfg['transactions'][ $i ]['label'] = number_format( $t['value'] ) . ' transactions a year (AED ' . number_format( $t['value'] / 2 ) . ')';
+		$cfg['transactions'][ $i ]['price'] = $t['value'] / 2;
+	}
+	$cfg['transactions'][]                     = array( 'value' => 60000, 'label' => '60,000 transactions (AED 30,000)' );
+	$cfg['employees'][1]['label']              = 'More than 20 employees (+AED 1,000)';
+	$cfg['statuses'][1]['label']               = 'Not registered (registration AED 500)';
+	$cfg['business_types'][0]['label']         = 'Trading, from AED 2,000';
+	$cfg['business_types'][]                   = array( 'value' => 'Shipping (AED 9,999)', 'label' => 'Shipping' );
+	$cfg['reports_options']                    = array( array( 'value' => 2, 'label' => '2 reports, AED 1,000' ), 4 );
+	$cfg['defaults']['employees']              = 'AED 1,000';
+	$cfg['defaults']['services']               = array( 'einvoicing', 'audit' );
+	$cfg['total_label']                        = 'Estimated annual total in AED';
+	return $cfg;
+} );
+$bx  = LP_Calc_Pricing::browser_config();
+$cx  = LP_Calc_Pricing::config();
+remove_filter( 'lp_calc_config', $strict );
+$bxs = implode( "\n", lp_test_strings( $bx ) ) . wp_json_encode( $bx );
+check( 'strict filter: config() keeps the filtered texts (the server is unchanged)', 'Accounting (AED 2,150)' === $cx['services'][0]['label'] && 2150 === $cx['prices']['accounting'] );
+check( 'strict filter: no amount and no filtered price anywhere in browser_config()', array() === lp_test_amounts( $bxs ) && false === strpos( $bxs, '2150' ) && false === strpos( $bxs, '2,150' ) && false === strpos( $bxs, 'External audit' ) && false === strpos( $bxs, '9,999' ) && false === strpos( $bxs, '60,000' ) && false === strpos( $bxs, '60000' ) && false === strpos( $bxs, '"price"' ), json_encode( lp_test_amounts( $bxs ) ) );
+check( 'strict filter: a priced service label falls back to the plugin label', 'Accounting and bookkeeping' === $bx['services'][0]['label'] );
+check( 'strict filter: priced descriptions in any spelling are left out, clean ones kept', ! isset( $bx['services'][0]['description'] ) && ! isset( $bx['services'][1]['description'] ) && ! isset( $bx['services'][4]['description'] ) && ! isset( $bx['services'][8]['description'] ) && isset( $bx['services'][2]['description'] ) );
+check( 'strict filter: an added service with a priced label is left out; other added keys are not copied', ! in_array( 'audit', array_column( $bx['services'], 'key' ), true ) && array( 'key' => 'payroll_plus', 'label' => 'Payroll plus' ) === end( $bx['services'] ) );
+check( 'strict filter: option labels fall back to the plugin labels, options carry value and label only', $cx['business_types'] !== $bx['business_types'] && LP_Calc_Pricing::config()['transactions'] === $bx['transactions'] && 'More than 20 employees' === $bx['employees'][1]['label'] && 'Not registered' === $bx['statuses'][1]['label'] && 'Trading / Wholesale' === $bx['business_types'][0]['label'] );
+check( 'strict filter: an added option with a priced value or label is left out', 10 === count( $bx['transactions'] ) && ! in_array( 'Shipping (AED 9,999)', array_column( $bx['business_types'], 'value' ), true ) && 8 === count( $bx['business_types'] ) );
+check( 'strict filter: reports options as numbers only', array( 2, 4 ) === $bx['reports_options'] );
+check( 'strict filter: defaults limited to what the page offers', array( 'transactions' => 1000, 'reports' => 4, 'services' => array( 'einvoicing' ) ) === $bx['defaults'], json_encode( $bx['defaults'] ) );
+check( 'strict filter: a priced total label falls back to the plugin label', LP_Calc_Pricing::TOTAL_LABEL === $bx['total_label'] );
+check( 'strict filter: package lines use the clean labels', array( 'More than 20 employees', '1,000 transactions a year' ) === array_column( LP_Calc_Pricing::package_lines( array( 'services' => array( 'payroll', 'einvoicing' ), 'employees' => 'over_20', 'transactions' => 1000 ), $bx ), 'detail' ) );
 
 $pk = LP_Calc_Pricing::package_lines( LP_Calc_Pricing::normalize( array( 'business' => 'Trading / Wholesale', 'transactions' => '1000', 'vat_status' => 'registered', 'ct_status' => 'not_registered', 'employees' => 'up_to_20', 'services' => 'accounting,vat,ct,payroll' ) )['selection'] );
 check( 'package_lines(): Excel example', array( array( 'key' => 'accounting', 'label' => 'Accounting and bookkeeping', 'detail' => 'Annual service' ), array( 'key' => 'vat', 'label' => 'VAT returns filing and compliance', 'detail' => 'Already VAT registered' ), array( 'key' => 'ct', 'label' => 'Corporate Tax registration and filing', 'detail' => 'Includes Corporate Tax registration' ), array( 'key' => 'payroll', 'label' => 'Payroll and WPS support', 'detail' => 'Up to 20 employees' ) ) === $pk, json_encode( $pk ) );
@@ -658,6 +737,17 @@ $ref = $figures_ok( $r, 'tampered, without actions_before' );
 check( 'tampered, without actions_before: lead form and source forced, nothing tampered reaches Zoho', 'Ledgerplus Package Calculator' === $GLOBALS['lp_test']['zoho'][0]['Lead_Form'] && 'Website' === $GLOBALS['lp_test']['zoho'][0]['Lead_Source'] && false === strpos( $GLOBALS['lp_test']['zoho'][0]['Description'], 'Tampered' ) && 'LPQ-000000-00000' !== $ref );
 check( 'state cleared after each request', null === LP_Calc_Elementor::state() );
 
+// f) process() and then actions_before() on the same record: the second pass reuses the quote and
+// does not normalize the plugin's own output again (clean_text() decodes entities on each pass).
+foreach ( array( '&amp;lt;b&amp;gt;', 'info&amp;#64;example' ) as $other ) {
+	lp_test_reset();
+	$r = lp_test_submit( array( 'lpc_business' => 'Other', 'lpc_business_other' => $other ) );
+	$f = $r['record']->get( 'fields' );
+	$q = $r['data']['data']['lp_quote'] ?? array();
+	check( "double-encoded Other activity \"$other\": lp_quote with the figures and the record's ref", true === $r['success'] && 'AED 7,000' === ( $q['total'] ?? '' ) && 4 === count( $q['lines'] ?? array() ) && $f['quote_ref']['value'] === ( $q['ref'] ?? '' ), json_encode( $q ) );
+	check( "double-encoded Other activity \"$other\": client email and PDF sent, nothing logged", 1 === count( $GLOBALS['lp_test']['mails'] ) && isset( $GLOBALS['lp_test']['mails'][0]['attachments'][0] ) && '' === trim( file_get_contents( LP_TEST_LOG ) ), file_get_contents( LP_TEST_LOG ) );
+}
+
 /* ====================================================================== new_record */
 section( 'new_record: PDF, client email, response data' );
 lp_test_reset();
@@ -714,6 +804,39 @@ $log = file_get_contents( LP_TEST_LOG );
 check( 'wp_mail failure: response still has lp_quote with email_sent false', true === $r['success'] && false === $r['data']['data']['lp_quote']['email_sent'] );
 check( 'wp_mail failure: logged with [lp-calc], no personal data', false !== strpos( $log, '[lp-calc] client email not sent for LPQ-' ) && false === strpos( $log, '@' ) && false === strpos( $log, 'Test Customer' ) && false === strpos( $log, '971' ) );
 check( 'wp_mail failure: temp files deleted', array() === glob( LP_TEST_TMP . '/lp-calc-*' ) );
+
+// A form action fails (Zoho throws): Elementor answers "Something went wrong. Please try again".
+$zoho_throws = lp_test_actions();
+$zoho_throws['zoho_Ledgers_Plus'] = function () {
+	throw new Exception( 'Zoho API down' );
+};
+lp_test_reset();
+$handler = new ElementorPro\Modules\Forms\Classes\Ajax_Handler();
+$r       = $handler->ajax_send_form( lp_test_form(), lp_test_post(), $zoho_throws );
+$q       = $r['data']['data']['lp_quote'] ?? array();
+check( 'action failed, client emailed: lp_quote keeps the figures (the page shows the result)', false === $r['success'] && true === ( $q['email_sent'] ?? null ) && 'AED 7,000' === ( $q['total'] ?? '' ) && 4 === count( $q['lines'] ?? array() ) );
+foreach ( array( 'site-wide cap reached' => 'cap', 'wp_mail fails' => 'mail' ) as $why => $how ) {
+	lp_test_reset();
+	if ( 'cap' === $how ) {
+		add_filter( 'lp_calc_rate_limits', $cap = function ( $l ) {
+			$l['global'] = 1;
+			return $l;
+		} );
+		LP_Calc_Elementor::client_email_allowed();
+	} else {
+		$GLOBALS['lp_test']['mail_ok'] = false;
+	}
+	$handler = new ElementorPro\Modules\Forms\Classes\Ajax_Handler();
+	$r       = $handler->ajax_send_form( lp_test_form(), lp_test_post(), $zoho_throws );
+	if ( 'cap' === $how ) {
+		remove_filter( 'lp_calc_rate_limits', $cap );
+	}
+	$q = $r['data']['data']['lp_quote'] ?? null;
+	check( "action failed, $why: the error response carries no figures", false === $r['success'] && is_array( $q ) && false === $q['email_sent'] && array() === $q['lines'] && '' === $q['total'] && 1 === preg_match( '/^LPQ-\d{6}-[0-9A-F]{5}$/', $q['ref'] ) && array() === lp_test_amounts( wp_json_encode( $r['data'] ) ), wp_json_encode( $r['data'] ) );
+	check( "action failed, $why: same keys as always (ref, lines, total, email, email_sent)", array( 'ref', 'lines', 'total', 'email', 'email_sent' ) === array_keys( $q ) );
+	check( "action failed, $why: the team email and the saved entry still have the figures", 'AED 7,000' === ( $GLOBALS['lp_test']['saved'][0]['quote_total'] ?? '' ) && false !== strpos( $GLOBALS['lp_test']['team_email'][0]['content'] ?? '', 'AED 7,000' ) );
+}
+check( 'response_data() without figures', array( 'ref' => 'LPQ-261128-AAAAA', 'lines' => array(), 'total' => '', 'email' => 'test.customer@example.com', 'email_sent' => false ) === LP_Calc_Elementor::response_data( array( 'ref' => 'LPQ-261128-AAAAA', 'quote' => LP_Calc_Pricing::compute( $excel['selection'] ), 'contact' => array( 'email' => 'test.customer@example.com' ) ), false, false ) );
 
 // A folder an earlier request left behind (hard kill) is swept after an hour; a fresh one is kept.
 lp_test_reset();

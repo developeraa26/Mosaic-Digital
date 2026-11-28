@@ -21,10 +21,12 @@
  *                               {"zoho_throws": true} makes the fake Zoho action throw; {"keep_files": true}
  *                               keeps the saved mail-* files of earlier requests; {"drop_hooks": ["process",
  *                               "actions_before"]} removes those plugin hooks, to prove the server paths
- *                               where one (or both) of them does not run.
+ *                               where one (or both) of them does not run; {"email_cap_reached": true}
+ *                               uses up the site-wide cap of client emails before each submission.
  *   static                      /wp-content/plugins/ledgerplus-calculator/*, /fixtures/*, /node_modules/*.
  *
- * State lives in $LP_E2E_STATE (default calculator/test/out/e2e): state.json (transients survive
+ * State lives in $LP_E2E_STATE (e2e.test.js gives each run its own folder; default calculator/test/out/e2e
+ * for a router started by hand): state.json (transients survive
  * between requests, so the rate limit works across submissions), saved PDF attachments and client
  * email bodies, uploads/ (the logo), tmp/ (WordPress temp dir; must be empty after each request) and
  * php-error.log (error_log() output, e.g. the plugin's "[lp-calc] ..." lines).
@@ -212,6 +214,10 @@ if ( '/wp-admin/admin-ajax.php' === $path && 'POST' === $method ) {
 	lp_e2e_logo( $GLOBALS['lp_test']['uploads'] );
 	$GLOBALS['lp_test']['transients'] = isset( $state['transients'] ) ? $state['transients'] : array();
 	$GLOBALS['lp_test']['mails']      = array();
+	if ( ! empty( $state['options']['email_cap_reached'] ) ) {
+		$limits = LP_Calc_Elementor::rate_limits();
+		set_transient( LP_Calc_Elementor::RL_PREFIX . 'global', array( 'count' => $limits['global'], 'start' => time() ), $limits['global_window'] );
+	}
 
 	if ( ! isset( $_POST['action'] ) || 'elementor_pro_forms_send_form' !== $_POST['action'] ) {
 		// admin-ajax.php with no handler for the action.

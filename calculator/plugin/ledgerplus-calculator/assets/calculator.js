@@ -254,7 +254,8 @@
 			missing: qs(root, '[data-lp-calc-missing]'),
 			editorNotice: qs(root, '[data-lp-calc-editor-notice]'),
 			editMode: qs(root, '[data-lp-calc-editmode]'),
-			mailto: qs(root, '[data-lp-calc-mailto]')
+			mailto: qs(root, '[data-lp-calc-mailto]'),
+			railSticky: qs(root, '.lp-calc__rail-sticky')
 		};
 		this.bind();
 		this.sync();
@@ -537,9 +538,29 @@
 		return qs(this.root, '[data-lp-calc-panel="' + step + '"]');
 	};
 
+	/**
+	 * Where the top of the calculator goes when it is scrolled into view: 16px below a fixed or
+	 * sticky site header. On desktop, where the rail is sticky, never above the rail's sticky top,
+	 * and the rail then sticks at that same offset, so the steps card and the main card stay level
+	 * (also under a header taller than the CSS allows for, such as one with the admin bar).
+	 */
+	Calculator.prototype.topOffset = function () {
+		var offset = headerOffset() + 16;
+		var rail = this.el.railSticky;
+		if (rail && win.getComputedStyle(rail).position === 'sticky') {
+			if (this.stickyBase === undefined) {
+				// The CSS value (--lp-sticky-top, 104px), read before it is first set here.
+				this.stickyBase = parseFloat(win.getComputedStyle(this.root).getPropertyValue('--lp-sticky-top')) || 0;
+			}
+			offset = Math.max(offset, this.stickyBase);
+			this.root.style.setProperty('--lp-sticky-top', offset + 'px');
+		}
+		return offset;
+	};
+
 	Calculator.prototype.scrollIntoView = function () {
 		var target = this.root;
-		var offset = headerOffset() + 16;
+		var offset = this.topOffset();
 		var rect = target.getBoundingClientRect();
 		if (rect.top >= offset - 1 && rect.top < win.innerHeight * 0.5) {
 			return; // Already in view near the top.
@@ -618,7 +639,7 @@
 	 * below a sticky site header.
 	 */
 	Calculator.prototype.scrollToField = function (el) {
-		var top = headerOffset() + 16;
+		var top = this.topOffset();
 		var bottom = win.innerHeight - 16;
 		var rect = el.getBoundingClientRect();
 		if (rect.top >= top && rect.top + Math.min(rect.height, 140) <= bottom) {
@@ -1064,7 +1085,11 @@
 
 		var lead = make('p', 'lp-calc__result-lead');
 		var ref = quote && quote.ref ? String(quote.ref) : '';
-		if (quote && quote.email_sent !== false) {
+		// Server figures to show. Without them (no lp_quote, or lp_quote without lines) the page
+		// shows no figures and does not claim the quotation was sent.
+		var hasLines = !!(quote && quote.lines && quote.lines.length);
+		var sent = hasLines && quote.email_sent !== false;
+		if (sent) {
 			appendText(lead, 'Your quotation ');
 			if (ref) {
 				lead.appendChild(make('strong', 'lp-calc__ref', ref));
@@ -1073,17 +1098,13 @@
 			appendText(lead, 'is on its way to ');
 			lead.appendChild(make('strong', '', email || 'your inbox'));
 			appendText(lead, '.');
-		} else if (quote) {
+		} else {
 			appendText(lead, 'We have received your request');
 			if (ref) {
 				appendText(lead, ' ');
 				lead.appendChild(make('strong', 'lp-calc__ref', ref));
 			}
-			appendText(lead, '. We could not email your quotation just now, so a Ledger Plus advisor will send it to ');
-			lead.appendChild(make('strong', '', email || 'you'));
-			appendText(lead, ' shortly.');
-		} else {
-			appendText(lead, 'We have received your request. A Ledger Plus advisor will email your quotation to ');
+			appendText(lead, hasLines ? '. We could not email your quotation just now, so a Ledger Plus advisor will send it to ' : '. A Ledger Plus advisor will email your quotation to ');
 			lead.appendChild(make('strong', '', email || 'you'));
 			appendText(lead, ' shortly.');
 		}
@@ -1091,7 +1112,7 @@
 
 		var summary = make('div', 'lp-calc__summary lp-calc__summary--result');
 		var ul;
-		if (quote && quote.lines && quote.lines.length) {
+		if (hasLines) {
 			// The server's figures: the total first, then the lines.
 			var heading = make('p', 'lp-calc__summary-title', TEXT.yourQuote);
 			if (ref) {
@@ -1134,7 +1155,7 @@
 		box.hidden = false;
 		this.root.classList.add('is-complete');
 		if (this.el.count) {
-			this.el.count.textContent = quote && quote.email_sent !== false ? TEXT.done : TEXT.received;
+			this.el.count.textContent = sent ? TEXT.done : TEXT.received;
 		}
 		if (this.el.progress) {
 			this.el.progress.style.width = '100%';

@@ -38,7 +38,7 @@ The plugin has no settings page and creates no tables or options. It only stores
 
 == Filters ==
 
-* `lp_calc_config` (array): the whole calculator config, prices included. The server prices quotes with it. If you change `prices`, change the matching service `hint` too. The page gets only the choices and labels from it (`LP_Calc_Pricing::browser_config()`): never `prices`, `currency`, `vat_rate` or the `hint` texts, and no service description that states a price (see `LP_Calc_Pricing::mentions_price()`). Do not put prices in labels.
+* `lp_calc_config` (array): the whole calculator config, prices included. The server prices quotes with it. If you change `prices`, change the matching service `hint` too. The page gets only the choices and labels from it (`LP_Calc_Pricing::browser_config()`): never `prices`, `currency`, `vat_rate` or the `hint` texts, and of each option only its value and label. Each label and description it copies is checked with `LP_Calc_Pricing::mentions_price()`, which looks for a currency code, name or sign, a price word and the prices themselves as numbers (its docblock has the full list). A description with a price is left out; a label with a price is replaced by the plugin's own label; an option or service you added with a price in its label is left out. Do not put prices in labels or descriptions.
 * `lp_calc_is_calculator_form` (bool, $record): whether a submitted form is the calculator form.
 * `lp_calc_rate_limits` (array): `ip` (5), `ip_window` (3600 s), `email` (3), `email_window` (86400 s), `global` (30), `global_window` (3600 s). Each price needs a submission, so a visitor who compares several packages reaches these limits sooner; the limit message points them to info@ledgerplus.ae. A limit of 0 switches that check off. The IP limit counts an IPv6 address by its /64 network. The email limit counts a mailbox: case, a "+tag" and Gmail dots are ignored. `global` caps the client emails the whole site sends; past it the lead still reaches Zoho and the team, and only the client email is skipped. For stronger protection add Cloudflare Turnstile or reCAPTCHA v3 to the form.
 * `lp_calc_client_ip` (string): the visitor's IP address. The default is `REMOTE_ADDR`. Behind a proxy or CDN that does not restore the real address, return the right header here, or every visitor shares one limit.
@@ -56,6 +56,7 @@ The plugin does not store submissions. Elementor Pro's "Collect submissions" act
 * Step 5 lists the chosen services ("Your package") without amounts. The live estimate box, the phone estimate bar and the price hints on the service cards are gone.
 * This readme no longer lists the prices: it is a public file on most sites.
 * The server writes the quote fields at `elementor_pro/forms/process` as well as in `elementor_pro/forms/record/actions_before`, so Zoho and the team email get the figures even if one of the two hooks does not run.
+* When a form action fails and the client email was not sent, the error response carries no figures; the page shows the error.
 
 = 1.0.0 =
 * First release.

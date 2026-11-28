@@ -194,7 +194,10 @@ const TYPES = { '.css': 'text/css', '.js': 'application/javascript', '.woff2': '
  * Serve the harness on the page. Returns a control object for the fake admin-ajax endpoint.
  * ctl.mode: 'ok' | 'server-error' | 'no-quote' (success without lp_quote) | 'no-lines' (lp_quote without
  * lines) | 'email-failed' (email_sent false, as past the site-wide cap) | 'emailed-error' (a later action
- * such as Zoho failed after the client email went out) | 'rate-limited' (form-level message only);
+ * such as Zoho failed after the client email went out) | 'failed-not-emailed' (a later action failed and
+ * the client was not emailed: the plugin's lp_quote then has no lines and no total) | 'failed-with-lines'
+ * (the same failure with the lines still in lp_quote, as 1.1.0 before the review sent it) |
+ * 'rate-limited' (form-level message only);
  * ctl.posts: posted bodies.
  */
 async function serve(page, opts) {
@@ -238,7 +241,14 @@ async function serve(page, opts) {
 					if (ctl.mode === 'no-lines') {
 						q.lines = [];
 					}
-					if (ctl.mode === 'emailed-error') {
+					if (ctl.mode === 'failed-not-emailed' || ctl.mode === 'failed-with-lines') {
+						q.email_sent = false;
+						if (ctl.mode === 'failed-not-emailed') {
+							q.lines = [];
+							q.total = '';
+						}
+					}
+					if (ctl.mode === 'emailed-error' || ctl.mode === 'failed-not-emailed' || ctl.mode === 'failed-with-lines') {
 						body = { success: false, data: { message: 'Something went wrong. Please try again, or email info@ledgerplus.ae.', errors: [], data: { lp_quote: q } } };
 					} else {
 						body = { success: true, data: { message: 'Thank you. Your quotation is on its way to your inbox.', data: ctl.mode === 'no-quote' ? {} : { lp_quote: q } } };

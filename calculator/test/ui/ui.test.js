@@ -363,6 +363,24 @@ async function shot(page, name, opts) {
 	await page.setViewportSize(vp);
 }
 
+/**
+ * Desktop (rail beside the card): after the calculator scrolled into view, the steps card and the
+ * main card start at the same height, below the site header. 850px and narrower: nothing is sticky.
+ */
+async function railLevel(page, label, width) {
+	const r = await page.evaluate(function () {
+		const card = document.querySelector('.lp-calc__card').getBoundingClientRect();
+		const rail = document.querySelector('.lp-calc__rail-card').getBoundingClientRect();
+		const header = document.querySelector('.elementor-location-header');
+		return { card: Math.round(card.top), rail: Math.round(rail.top), header: header ? Math.round(header.getBoundingClientRect().bottom) : 0, scrollY: Math.round(window.scrollY), sticky: getComputedStyle(document.querySelector('.lp-calc__rail-sticky')).position };
+	});
+	if (width > 850) {
+		check(r.sticky === 'sticky' && r.scrollY > 0 && Math.abs(r.card - r.rail) <= 1 && r.card >= r.header + 16, label + ': rail and card level, below the header', r);
+	} else {
+		check(r.sticky === 'static', label + ': rail not sticky', r);
+	}
+}
+
 /** Is the element inside the visible area, below the sticky site header? */
 async function inView(page, selector) {
 	return page.evaluate(function (s) {
@@ -649,7 +667,12 @@ async function testFlow(browser) {
 	await page.fill('.lp-calc-form [name="form_fields[email]"]', 'test.customer@example.com');
 	await noAmount(page, 'step 5 filled in, before sending');
 
-	// Valid submit.
+	// Valid submit. Figure fields filled in the DOM (a cached page, another script) are emptied on submit.
+	await page.evaluate(function () {
+		['quote_ref', 'quote_total', 'quote_summary'].forEach(function (id) {
+			document.querySelector('.lp-calc-form [name="form_fields[' + id + ']"]').value = id === 'quote_ref' ? 'LPQ-000000-00000' : 'AED 1';
+		});
+	});
 	await page.click('.lp-calc-form .elementor-button[type="submit"]');
 	await page.waitForSelector('[data-lp-calc-result]:not([hidden])');
 	eq(ctl.posts.length, 1, 'posted once');
@@ -666,7 +689,7 @@ async function testFlow(browser) {
 	eq(post['form_fields[lpc_employees]'], 'up_to_20', 'posted lpc_employees');
 	eq(post['form_fields[lpc_reports]'], '2', 'posted lpc_reports (raw value, server ignores it without reports)');
 	eq(post['form_fields[lpc_services]'], 'accounting,vat,ct,payroll', 'posted lpc_services');
-	eq([post['form_fields[quote_ref]'], post['form_fields[quote_total]'], post['form_fields[quote_summary]']], ['', '', ''], 'figure fields posted empty (the server writes them)');
+	eq([post['form_fields[quote_ref]'], post['form_fields[quote_total]'], post['form_fields[quote_summary]']], ['', '', ''], 'figure fields posted empty, also when filled in the DOM (the server writes them)');
 	eq(A.findAmounts(JSON.stringify(post)), [], 'nothing in the post is an amount');
 	eq(post['form_fields[name]'], 'Test Customer', 'posted name');
 	eq(post['form_fields[field_lead_form]'], 'Ledgerplus Package Calculator', 'lead form field untouched');
@@ -737,7 +760,7 @@ async function testFlow(browser) {
 }
 
 async function testVariants(browser) {
-	console.log('failed submission, email not sent (price still shown), no lp_quote, lp_quote without lines, ajaxComplete fallback');
+	console.log('failed submission, email not sent (price still shown), no lp_quote, lp_quote without lines, failed action without the client email, ajaxComplete fallback');
 
 	// Server-side validation error rendered by Elementor's handler, styled by our CSS.
 	let s = await open(browser, { width: 1440 });
@@ -803,9 +826,31 @@ async function testVariants(browser) {
 	await fillContact(s.page);
 	await s.page.click('.lp-calc-form .elementor-button[type="submit"]');
 	await s.page.waitForSelector('[data-lp-calc-result]:not([hidden])');
-	eq(await text(s.page, '.lp-calc__result-lead'), 'Your quotation LPQ-261127-4F2A9 is on its way to test.customer@example.com.', 'lp_quote without lines: lead');
+	eq(await text(s.page, '.lp-calc__result-lead'), 'We have received your request LPQ-261127-4F2A9. A Ledger Plus advisor will email your quotation to test.customer@example.com shortly.', 'lp_quote without lines: the "we have received your request" wording, with the ref');
+	eq(await text(s.page, sel.count), 'REQUEST RECEIVED', 'lp_quote without lines: header does not claim the quotation was sent');
+	eq(await text(s.page, '.lp-calc__result .lp-calc__summary-title'), 'Your package', 'lp_quote without lines: the package, no figures');
+	eq((await packageList(s.page, '.lp-calc__result .lp-calc__lines')).length, 4, 'lp_quote without lines: the four selected services');
+	eq(await s.page.locator('.lp-calc__result .lp-calc__summary-total, .lp-calc__result .lp-calc__line-amount').count(), 0, 'lp_quote without lines: no total, no amount column');
 	await noAmount(s.page, 'result with lp_quote but no lines');
+	await shot(s.page, '1440-6-result-no-lines');
 	await s.context.close();
+
+	// A later action failed and the client was not emailed: Elementor's error, no figures.
+	for (const mode of ['failed-not-emailed', 'failed-with-lines']) {
+		s = await open(browser, { width: 390, height: 844 });
+		s.ctl.mode = mode;
+		await toStep5(s.page);
+		await fillContact(s.page);
+		await s.page.click('.lp-calc-form .elementor-button[type="submit"]');
+		await s.page.waitForSelector('.lp-calc-form form > .elementor-message-danger');
+		await s.page.waitForTimeout(50);
+		check(!(await s.page.locator('[data-lp-calc-result]').isVisible()), mode + ': no result screen');
+		eq(await text(s.page, '.lp-calc-form form > .elementor-message-danger'), 'Something went wrong. Please try again, or email info@ledgerplus.ae.', mode + ': the error names info@ledgerplus.ae');
+		eq(await text(s.page, sel.count), 'STEP 05 / 05', mode + ': still on step 5');
+		await noAmount(s.page, mode);
+		await shot(s.page, 'review-390-5-' + mode, { viewportOnly: true });
+		await s.context.close();
+	}
 
 	// ajaxComplete fallback: drop our submit_success listener.
 	s = await open(browser, { width: 1440 });
@@ -1265,6 +1310,8 @@ async function testResponsive(browser) {
 		await noAmount(page, L + ' step 4');
 		await shot(page, width + '-4-services');
 		await next(page);
+		await railLevel(page, L + ' step 5', width);
+		await shot(page, width + '-5-details-viewport', { viewportOnly: true });
 		await layoutChecks(page, L + ' step 5');
 		await contrastChecks(page, L + ' step 5');
 		await noAmount(page, L + ' step 5');
@@ -1278,6 +1325,7 @@ async function testResponsive(browser) {
 		await fillContact(page);
 		await page.click('.lp-calc-form .elementor-button[type="submit"]');
 		await page.waitForSelector('[data-lp-calc-result]:not([hidden])');
+		await railLevel(page, L + ' result', width);
 		await layoutChecks(page, L + ' result');
 		await contrastChecks(page, L + ' result');
 		const res = await page.evaluate(function () {

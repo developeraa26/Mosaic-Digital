@@ -123,7 +123,7 @@ check(fcfg && !('price_list' in fcfg) && !('note' in fcfg.defaults), 'filtered: 
 check(fcfg && !('description' in fcfg.services[0]) && !('description' in fcfg.services[8]), 'filtered: descriptions that state a price are left out', fcfg && fcfg.services);
 
 /* 4. The assets. */
-console.log('4. calculator.js and calculator.css');
+console.log('4. calculator.js, calculator.css and readme.txt');
 const js = fs.readFileSync(JS_FILE, 'utf8');
 // The code without comments. Counts that are not prices are allowed: the 1,000-character limit of
 // the notes field (message and check) and the default of 1,000 transactions a year.

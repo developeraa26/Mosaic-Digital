@@ -7,7 +7,8 @@
  *      that are allowed), also when an lp_calc_config filter adds prices to the config;
  *   3. the config the page gets (LP_Calc_Pricing::browser_config()): no prices, currency, VAT rate or
  *      price hints, and no amount in any string;
- *   4. the real assets/calculator.js and calculator.css: no pricing code, no price keys, no amount;
+ *   4. the real assets/calculator.js and calculator.css, and the plugin's readme.txt (a public file on
+ *      most sites): no pricing code, no price keys, no amount;
  *   5. "Your package" parity: for every selection (services x VAT x CT x employees x reports x
  *      transactions), calculator.js packageLines() equals LP_Calc_Pricing::package_lines(), lists the
  *      same services in the same order as the server's quote, and has no amount.
@@ -137,6 +138,10 @@ eq(A.findAmounts(jsScan), [], 'calculator.js code: no amount');
 	check(jsCode.indexOf(needle) === -1, 'calculator.js code: no "' + needle + '"');
 });
 eq(Object.keys(LPCalc).sort(), ['Calculator', 'boot', 'fmtInt', 'init', 'packageLines'], 'calculator.js exports no pricing helper');
+// readme.txt ships in the zip and is a public file on most sites (/wp-content/plugins/...).
+const readme = fs.readFileSync(path.join(H.PLUGIN, 'readme.txt'), 'utf8');
+eq(A.findAmounts(readme), [], 'readme.txt (public in the plugin folder): no amount');
+check(/^Stable tag: 1\.1\.0$/m.test(readme), 'readme.txt: Stable tag 1.1.0');
 const css = fs.readFileSync(CSS_FILE, 'utf8');
 const contents = (css.match(/content:\s*("[^"]*"|'[^']*'|[^;]+);/g) || []);
 check(contents.length > 0 && contents.every(function (c) {

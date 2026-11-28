@@ -22,7 +22,7 @@ Prices come from the "Calculator" sheet of `Ledger_Plus_Package_Cost_Calculator.
   - The stored `_elementor_data` matches `page/out/page.json` exactly: MD5 `1c5a855244fee8a34abc0c0e86d4e7d9`, 20,273 characters.
 - **Plugin `ledgerplus-calculator` 1.1.0: ready to install.** 1.0.0 was handed over on 27 Nov 2026. Until a version is active, the draft shows the raw shortcode and a plain form.
   - 1.1.0 is the client's request of 27-28 Nov: "no need to show the cost in every step. need to show only after submit personal details."
-  - The zip is `plugin/ledgerplus-calculator-1.1.0.zip`, SHA-256 `55a3d8a24edae5eb91fe4fd9faa1a638cfdcd8ccc4c85b130cbca0c51dbba8c2`.
+  - The zip is `plugin/ledgerplus-calculator-1.1.0.zip`, SHA-256 `0d28af2f1fa7ada58e1a00099ec91645dae8d090f9e61fc4dc85da5389e52a37`.
   - The source is in `plugin/ledgerplus-calculator/`.
   - The page and `page/out/page.json` are unchanged: only the plugin changes.
 
@@ -50,7 +50,7 @@ Prices come from the "Calculator" sheet of `Ledger_Plus_Package_Cost_Calculator.
 ## How it works
 
 - **Pricing runs only on the server.**
-  - The browser gets the choices and labels without prices (`LP_Calc_Pricing::browser_config()`). Prices cannot be read from the page source.
+  - The browser gets the choices and labels without prices (`LP_Calc_Pricing::browser_config()`). Prices cannot be read from the page source, the plugin's JS and CSS, or its `readme.txt` (a public file).
   - The page sends the selection (`lpc_*`) and leaves the figure fields empty.
   - On submit, the server prices the selection (`LP_Calc_Pricing`). It writes the hidden fields `quote_ref`, `quote_total`, `quote_summary`, `field_lead_form`, `lead_source` and the `lpc_*` fields before Zoho and the team email run: at `elementor_pro/forms/process` and again in `actions_before`, so one hook is enough. A visitor cannot change the figures that reach the CRM.
   - The result screen shows the server's reference, lines and total. This is the first time the visitor sees a price.
@@ -88,7 +88,7 @@ Prices come from the "Calculator" sheet of `Ledger_Plus_Package_Cost_Calculator.
 
 - **Page:** the page builder and its checks.
 - **PHP:** 299 unit tests, including `browser_config()` without prices, the shortcode output without amounts, and the quote fields on every server path; seven sample PDFs checked with pdftotext, pdfinfo and pypdf; client emails at 600/375/320 px, also without styles and in an Outlook simulation.
-- **No prices:** 81 checks. The page source (shortcode, config JSON, form) and `calculator.js` / `calculator.css` carry no amount, also with a filter that adds prices. The browser's "Your package" lines equal the server's for all 76,760 selections.
+- **No prices:** 83 checks. The page source (shortcode, config JSON, form), `calculator.js`, `calculator.css` and the plugin's public `readme.txt` carry no amount, also with a filter that adds prices. The browser's "Your package" lines equal the server's for all 76,760 selections.
 - **UI:** 659 Playwright checks on the real shortcode plus the page's form, at 1440, 1280, 1024, 850, 768, 560, 390, 375, 360 and 320 px. No amount in the text or the DOM on steps 1-5, after errors, a failed submission, in the editor, without JavaScript and after "Start again".
 - **End to end:** 193 checks. A local server emulates the Elementor Pro submission: the browser sends the figure fields empty, and Zoho, the team email, the client email and the PDF still get the server's figures, also without the `actions_before` hook. Also tampering, validation, rate limits and a Zoho failure.
 

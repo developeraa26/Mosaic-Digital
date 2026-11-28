@@ -19,7 +19,9 @@
  *   GET  /__e2e/state           everything recorded so far (JSON).
  *   POST /__e2e/reset           clears the recorded state and the transients. Body (JSON, optional):
  *                               {"zoho_throws": true} makes the fake Zoho action throw; {"keep_files": true}
- *                               keeps the saved mail-* files of earlier requests.
+ *                               keeps the saved mail-* files of earlier requests; {"drop_hooks": ["process",
+ *                               "actions_before"]} removes those plugin hooks, to prove the server paths
+ *                               where one (or both) of them does not run.
  *   static                      /wp-content/plugins/ledgerplus-calculator/*, /fixtures/*, /node_modules/*.
  *
  * State lives in $LP_E2E_STATE (default calculator/test/out/e2e): state.json (transients survive
@@ -199,6 +201,14 @@ if ( '/wp-admin/admin-ajax.php' === $path && 'POST' === $method ) {
 
 	lp_env_boot( array( 'url' => isset( $_SERVER['HTTP_REFERER'] ) ? $_SERVER['HTTP_REFERER'] : '' ) );
 	lp_ef_honeypot();
+	$drop = isset( $state['options']['drop_hooks'] ) ? (array) $state['options']['drop_hooks'] : array();
+	if ( in_array( 'process', $drop, true ) ) {
+		remove_action( 'elementor_pro/forms/process', array( 'LP_Calc_Elementor', 'process' ), 10 );
+	}
+	if ( in_array( 'actions_before', $drop, true ) ) {
+		remove_filter( 'elementor_pro/forms/record/actions_before', array( 'LP_Calc_Elementor', 'actions_before' ), 10 );
+	}
+	$entry['dropped_hooks'] = array_values( $drop );
 	lp_e2e_logo( $GLOBALS['lp_test']['uploads'] );
 	$GLOBALS['lp_test']['transients'] = isset( $state['transients'] ) ? $state['transients'] : array();
 	$GLOBALS['lp_test']['mails']      = array();

@@ -1067,7 +1067,7 @@
 		if (quote && quote.email_sent !== false) {
 			appendText(lead, 'Your quotation ');
 			if (ref) {
-				lead.appendChild(make('strong', '', ref));
+				lead.appendChild(make('strong', 'lp-calc__ref', ref));
 				appendText(lead, ' ');
 			}
 			appendText(lead, 'is on its way to ');
@@ -1077,7 +1077,7 @@
 			appendText(lead, 'We have received your request');
 			if (ref) {
 				appendText(lead, ' ');
-				lead.appendChild(make('strong', '', ref));
+				lead.appendChild(make('strong', 'lp-calc__ref', ref));
 			}
 			appendText(lead, '. We could not email your quotation just now, so a Ledger Plus advisor will send it to ');
 			lead.appendChild(make('strong', '', email || 'you'));
@@ -1093,7 +1093,12 @@
 		var ul;
 		if (quote && quote.lines && quote.lines.length) {
 			// The server's figures: the total first, then the lines.
-			summary.appendChild(make('p', 'lp-calc__summary-title', TEXT.yourQuote + (ref ? ' ' + ref : '')));
+			var heading = make('p', 'lp-calc__summary-title', TEXT.yourQuote);
+			if (ref) {
+				appendText(heading, ' ');
+				heading.appendChild(make('span', 'lp-calc__ref', ref));
+			}
+			summary.appendChild(heading);
 			var totalRow = make('div', 'lp-calc__summary-total lp-calc__summary-total--strong');
 			totalRow.appendChild(make('span', 'lp-calc__summary-total-label', cfg.total_label || 'Estimated annual total (incl. 5% VAT)'));
 			totalRow.appendChild(make('strong', 'lp-calc__summary-total-amount', String(quote.total || '')));

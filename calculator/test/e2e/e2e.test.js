@@ -6,13 +6,19 @@
  *   node calculator/test/e2e/e2e.test.js        (exits non-zero on any failure)
  *
  * Proves:
- *   1. the server quote (lp_quote) equals the quote the UI showed, and the success panel shows the
- *      server ref and lines;
- *   2. the fake Zoho action's Description / Lead_Form / Lead_Source and the team email carry the
- *      server values, also when the browser sends tampered lpc_* and quote_* values;
+ *   1. the page (the HTML php -S sends and the live DOM on step 5) has no amount; the browser sends the
+ *      selection and leaves the figure fields (quote_ref, quote_total, quote_summary) empty; the server
+ *      quote (lp_quote) lists the services the page listed, and the result panel shows the server
+ *      ref, lines and total (the first time a price appears);
+ *   2. the fake Zoho action's Description / Lead_Form / Lead_Source, the team email, the client email
+ *      and the PDF carry the server's figures, also when the browser sends tampered lpc_* and quote_*
+ *      values;
  *   3. the captured client email has the PDF quotation attached (and the temp file is gone);
  *   4. server validation errors render in the form for bad input;
- *   5. the rate limit (3 per email per 24 h, 5 per IP per hour) kicks in.
+ *   5. the rate limit (3 per email per 24 h, 5 per IP per hour) kicks in;
+ *   6. with the figure fields empty, the figures still reach Zoho and the team email when the
+ *      actions_before filter does not run (the plugin also writes them at elementor_pro/forms/process),
+ *      and the client email, PDF and result still get them when neither hook runs (state_from_record).
  * Screenshots: calculator/test/out/e2e-*.png
  */
 'use strict';
@@ -24,6 +30,7 @@ const crypto = require('crypto');
 const { spawn, execFileSync } = require('child_process');
 const { chromium } = require('playwright');
 const H = require('../ui/harness');
+const A = require('../ui/amounts');
 
 const OUT = path.join(H.TEST, 'out');
 const STATE = path.join(OUT, 'e2e');
@@ -194,15 +201,34 @@ async function fillContact(page, values) {
 	}
 }
 
-/** The estimate the UI shows on step 5 (summary list and total). */
-async function uiQuote(page) {
+/** The step 5 "Your package" list the UI shows (labels and details, no amounts). */
+async function uiPackage(page) {
 	return page.evaluate(function () {
-		const lines = Array.prototype.map.call(document.querySelectorAll('[data-lp-calc-lines="summary"] .lp-calc__line'), function (li) {
-			const d = li.querySelector('.lp-calc__line-detail');
-			return { label: li.querySelector('.lp-calc__line-label').textContent.trim(), detail: d ? d.textContent.trim() : '', amount: li.querySelector('.lp-calc__line-amount').textContent.trim() };
+		return Array.prototype.map.call(document.querySelectorAll('[data-lp-calc-package] > li'), function (li) {
+			return { label: li.querySelector('.lp-calc__line-label').textContent.trim(), detail: li.querySelector('.lp-calc__line-detail').textContent.trim() };
 		});
-		return { lines: lines, total: document.querySelector('[data-lp-calc-total-static]').textContent.trim(), rail: document.querySelector('.lp-calc__estimate-total').textContent.trim() };
 	});
+}
+
+/** Amounts in the calculator: visible text and DOM (the country-code list's dial codes left out). */
+async function pageAmounts(page) {
+	const dump = await page.evaluate(function () {
+		const root = document.querySelector('.lp-calc');
+		const clone = root.cloneNode(true);
+		clone.querySelectorAll('.iti__country-list, .iti__dropdown-content').forEach(function (el) {
+			el.parentNode.removeChild(el);
+		});
+		return root.innerText + '\n' + clone.outerHTML;
+	});
+	return A.findAmounts(dump);
+}
+
+/** Amounts in the HTML php -S sends: the shortcode output and the form widget. */
+async function sourceAmounts(url) {
+	const html = await (await fetch(url)).text();
+	const start = html.indexOf('<div class="elementor-shortcode">');
+	const end = html.indexOf('<script src="/node_modules/jquery');
+	return { found: start !== -1 && end > start && html.indexOf('id="lp-calc-config"') > start, hits: A.findAmounts(html.slice(start, end)) };
 }
 
 async function resultPanel(page) {
@@ -304,15 +330,25 @@ function pdfText(file) {
 const CUSTOMER = { name: 'Test Customer', company: 'Test Trading LLC', email: 'test.customer@example.com', phone: '50 123 4567', message: 'Test message: please call after 10am.' };
 
 async function happyPath(browser, base, formId) {
-	console.log('1. full submission through the UI (server quote = UI quote, Zoho, team email, client email + PDF)');
+	console.log('1. full submission through the UI (no amount before sending, empty figure fields; server quote, Zoho, team email, client email + PDF)');
 	const plan = { business: 'Trading / Wholesale', tx: 10000, vat: 'registered', ct: 'not_registered', services: ['accounting', 'reports', 'vat', 'ct', 'payroll', 'einvoicing'], employees: 'over_20', reports: 2 };
 	const s = await open(browser, base);
 	const { page } = s;
+	const src = await sourceAmounts(s.url);
+	check(src.found && src.hits.length === 0, 'page source sent by the server (shortcode, config JSON, form): no amount', src);
 	await toStep5(page, plan);
-	const ui = await uiQuote(page);
-	eq(ui.total, 'AED 14,000', 'UI total for the plan (2,000 + 1,000 + 2,000 + 2,000 + 2,000 + 5,000)');
-	eq(ui.rail, ui.total, 'rail total = step 5 total');
+	const ui = await uiPackage(page);
+	deq(ui, [
+		{ label: LABELS.accounting, detail: 'Annual service' },
+		{ label: LABELS.reports, detail: '2 reports a year' },
+		{ label: LABELS.vat, detail: 'Already VAT registered' },
+		{ label: LABELS.ct, detail: 'Includes Corporate Tax registration' },
+		{ label: LABELS.payroll, detail: 'More than 20 employees' },
+		{ label: LABELS.einvoicing, detail: '10,000 transactions a year' }
+	], 'step 5 "Your package": the selection, no amounts');
+	deq(await pageAmounts(page), [], 'step 5: no amount anywhere in the page before sending');
 	await fillContact(page, CUSTOMER);
+	deq(await pageAmounts(page), [], 'step 5 filled in: still no amount');
 	const st = await submitAndWait(page, base, 0);
 	await page.waitForSelector('[data-lp-calc-result]:not([hidden])');
 	const req = st.requests[0];
@@ -329,15 +365,24 @@ async function happyPath(browser, base, formId) {
 	}, { v: '1', b: 'Trading / Wholesale', t: '10000', vat: 'registered', ct: 'not_registered', e: 'over_20', r: '2', s: 'accounting,reports,vat,ct,payroll,einvoicing' }, 'posted lpc_* = the UI selection (raw values)');
 	eq(req.post.form_fields.utm_source, 'e2e-source', 'posted utm_source from the request-arg dynamic tag');
 	eq(req.post.form_fields.phone, CUSTOMER.phone.replace(/\s+/g, ''), 'phone posted without spaces (Elementor Pro\'s Tel field rejects them)');
+	deq({ r: req.post.form_fields.quote_ref, t: req.post.form_fields.quote_total, s: req.post.form_fields.quote_summary }, { r: '', t: '', s: '' }, 'the browser sent the figure fields empty');
+	deq(A.findAmounts(JSON.stringify(req.post)), [], 'nothing the browser posted is an amount');
 
-	// Server quote = UI quote.
+	// The server quote: the services the page listed, priced on the server.
 	check(res && res.success === true, 'response success', res);
 	const q = res.data.data.lp_quote;
 	check(/^LPQ-\d{6}-[0-9A-F]{5}$/.test(q.ref), 'server ref format LPQ-YYMMDD-XXXXX', q.ref);
 	const d = new Date();
 	eq(q.ref.slice(4, 10), String(d.getUTCFullYear()).slice(2) + String(d.getUTCMonth() + 1).padStart(2, '0') + String(d.getUTCDate()).padStart(2, '0'), 'ref carries the UTC date');
-	eq(q.total, ui.total, 'server total = UI total');
-	deq(q.lines.map(shown), ui.lines, 'server lines (label, detail, amount) = UI lines');
+	eq(q.total, 'AED 14,000', 'server total (2,000 + 1,000 + 2,000 + 2,000 + 2,000 + 5,000)');
+	deq(q.lines.map(function (l) {
+		return l.label;
+	}), ui.map(function (l) {
+		return l.label;
+	}), 'server lines = the services the page listed, in the same order');
+	deq(q.lines.map(function (l) {
+		return l.amount;
+	}), ['AED 2,000', 'AED 1,000', 'AED 2,000', 'AED 2,000', 'AED 2,000', 'AED 5,000'], 'server line amounts');
 	eq(q.email, CUSTOMER.email, 'lp_quote.email');
 	eq(q.email_sent, true, 'lp_quote.email_sent');
 	eq(res.data.message, 'Thank you. Your quotation is on its way to your inbox.', 'success message from page.json');
@@ -349,6 +394,7 @@ async function happyPath(browser, base, formId) {
 	eq(panel.heading, 'Your quotation ' + q.ref, 'result heading carries the server ref');
 	deq(panel.lines, q.lines.map(shown), 'result lines = server lines');
 	eq(panel.total, q.total, 'result total = server total');
+	check((await pageAmounts(page)).length > 0, 'the price appears only now, on the result screen');
 	eq(await page.locator('.lp-calc__result a[href$=".pdf"], .lp-calc__result [download]').count(), 0, 'no PDF download on the page');
 	await shot(page, '1440-result');
 
@@ -425,26 +471,25 @@ async function tampered(browser, base) {
 	const s = await open(browser, base);
 	const { page } = s;
 	await toStep5(page, plan);
-	const ui = await uiQuote(page);
-	eq(ui.total, 'AED 4,000', 'UI total (2,000 + 500 + 1,500 + Included)');
-	// In the DOM: fields the JS never writes.
+	const ui = await uiPackage(page);
+	// In the DOM: fields the JS never writes. The figure fields the JS empties on submit.
 	await page.evaluate(function () {
 		const set = function (id, v) {
 			document.querySelector('.lp-calc-form [name="form_fields[' + id + ']"]').value = v;
 		};
 		set('quote_ref', 'LPQ-000000-00000');
 		set('quote_total', 'AED 1');
-		set('quote_summary', 'Tampered summary: everything free');
 		set('field_lead_form', 'Tampered lead form');
 		set('lead_source', 'Tampered source');
 	});
-	// In flight: lpc_* the JS just wrote (a client that skips our script).
+	// In flight: lpc_* the JS just wrote and the figure fields (a client that skips our script).
 	await tamper(page, {
 		'form_fields[lpc_business_other]': '<b>Yacht</b> charter [field id="email"]',
 		'form_fields[lpc_employees]': 'over_20',
 		'form_fields[lpc_reports]': '99',
 		'form_fields[lpc_services]': 'ACCOUNTING, Expense management,einvoicing , account_manager',
-		'form_fields[quote_total]': 'AED 2'
+		'form_fields[quote_total]': 'AED 2',
+		'form_fields[quote_summary]': 'Tampered summary: everything free'
 	});
 	await fillContact(page, { name: 'Dr. Test Tamper', company: 'Test Marine LLC', email: 'tamper.test@example.com', phone: '+971 50 000 0000', message: '' });
 	const before = (await state(base)).requests.length;
@@ -457,8 +502,13 @@ async function tampered(browser, base) {
 	const res = req.response;
 	check(res.success === true, 'tampered submission still succeeds', res);
 	const q = res.data.data.lp_quote;
-	eq(q.total, ui.total, 'server total = UI total (tampering ignored)');
-	deq(q.lines.map(shown), ui.lines, 'server lines = UI lines (as displayed: no detail that repeats the amount)');
+	eq(q.total, 'AED 4,000', 'server total (2,000 + 500 + 1,500 + Included): tampering ignored');
+	deq(q.lines.map(function (l) {
+		return l.label;
+	}), ui.map(function (l) {
+		return l.label;
+	}), 'server lines = the services the page listed');
+	deq((await resultPanel(page)).lines, q.lines.map(shown), 'result lines = server lines (no detail that repeats the amount)');
 	eq((q.lines.filter(function (l) {
 		return l.key === 'account_manager';
 	})[0] || {}).detail, 'Included', 'lp_quote keeps the account manager detail; the page shows "Included" once');
@@ -650,6 +700,7 @@ async function rateLimit(browser, base, firstEmail) {
 	eq(req.response.data.message, LIMIT_MESSAGE, 'limit message');
 	eq((await page.locator('.lp-calc-form form > .elementor-message-danger').textContent()).trim(), LIMIT_MESSAGE, 'limit message rendered in the form');
 	check(!(await page.locator('[data-lp-calc-result]').isVisible()), 'no result panel when limited');
+	deq(await pageAmounts(page), [], 'limited: no amount on the page');
 	check(req.zoho.length === 0 && req.mails.length === 0 && req.saved.length === 0, 'limited: no Zoho lead, no email, nothing saved');
 	await page.evaluate(function () {
 		document.querySelector('.lp-calc-form form > .elementor-message-danger').scrollIntoView({ block: 'center' });
@@ -696,9 +747,64 @@ async function zohoFailure(browser, base) {
 	eq(await page.locator('.lp-calc-form .elementor-message-danger').count(), 0, 'the client was emailed: no "try again" message (a retry would send a second lead and email)');
 	const panel = await resultPanel(page);
 	eq(panel.lead, 'Your quotation ' + req.response.data.data.lp_quote.ref + ' is on its way to zoho.fail@example.com.', 'result panel shown at 390px');
+	eq(panel.total, 'AED 2,000', 'the price shows on the result at 390px');
 	eq((await page.locator('[data-lp-calc-count]').textContent()).trim(), 'QUOTATION SENT', 'header: quotation sent');
 	await shot(page, '390-zoho-failed');
 	await s.context.close();
+}
+
+async function hookPaths(browser, base) {
+	console.log('6. empty figure fields on the other server paths: without actions_before, and without both hooks');
+	const plan = { business: 'Retail', tx: 2000, vat: 'not_registered', ct: 'registered', services: ['accounting', 'vat', 'ct', 'einvoicing'] };
+	const contact = { name: 'Test Customer', company: 'Test Trading LLC', email: 'paths.test@example.com', phone: '50 123 4567', message: '' };
+	const run = async function (drop) {
+		await resetState(base, { drop_hooks: drop, keep_files: true });
+		const s = await open(browser, base);
+		await toStep5(s.page, plan);
+		await fillContact(s.page, contact);
+		const st = await submitAndWait(s.page, base, 0);
+		await s.page.waitForSelector('[data-lp-calc-result]:not([hidden])');
+		const req = st.requests[0];
+		const q = req.response.data.data.lp_quote;
+		const label = 'without ' + drop.join(' and ');
+		deq(req.dropped_hooks, drop, label + ': hooks removed for this request');
+		deq([req.post.form_fields.quote_ref, req.post.form_fields.quote_total, req.post.form_fields.quote_summary], ['', '', ''], label + ': the browser sent the figure fields empty');
+		check(req.response.success === true && /^LPQ-\d{6}-[0-9A-F]{5}$/.test(q.ref), label + ': success with a server ref', req.response);
+		eq(q.total, 'AED 7,000', label + ': lp_quote total (2,000 + 2,500 + 1,500 + 1,000)');
+		deq(q.lines.map(function (l) {
+			return l.amount;
+		}), ['AED 2,000', 'AED 2,500', 'AED 1,500', 'AED 1,000'], label + ': lp_quote lines');
+		const m = req.mails[0] || { attachments: [] };
+		eq(m.subject, 'Your Ledger Plus package estimate (' + q.ref + ')', label + ': client email with the server ref');
+		check(fs.readFileSync(m.html_file, 'utf8').indexOf('AED 7,000') !== -1, label + ': client email has the total');
+		if (m.attachments[0]) {
+			const txt = pdfText(m.attachments[0].saved_as).replace(/[ \t]+/g, ' ');
+			check(txt.indexOf(q.ref) !== -1 && txt.indexOf('7,000') !== -1 && txt.indexOf('2,500') !== -1, label + ': PDF has the ref and the figures', txt.slice(0, 600));
+		} else {
+			check(false, label + ': PDF attached');
+		}
+		const panel = await resultPanel(s.page);
+		eq(panel.total, q.total, label + ': the result shows the server total');
+		await s.context.close();
+		return { req: req, q: q, summary: expectedSummary(q.ref, plan, 'Retail', q.lines, q.total) };
+	};
+
+	// Without actions_before: process() wrote the figures before the actions.
+	let r = await run(['actions_before']);
+	const z = r.req.zoho[0] || {};
+	eq(z.Description, 'Client Company Name: Test Trading LLC\n\nPackage calculator estimate:\n' + r.summary, 'without actions_before: Zoho Description has the server summary');
+	eq(z.Lead_Form, 'Ledgerplus Package Calculator', 'without actions_before: Zoho Lead_Form');
+	const te = r.req.team_email[0] || {};
+	check(te.subject === 'Package calculator lead: Test Trading LLC (' + r.q.ref + ')' && te.content.indexOf(r.summary) !== -1, 'without actions_before: team email has the ref and summary', te.subject);
+	deq({ r: (r.req.saved[0] || {}).quote_ref, t: (r.req.saved[0] || {}).quote_total }, { r: r.q.ref, t: 'AED 7,000' }, 'without actions_before: saved submission has the figures');
+	eq(r.req.error_log, '', 'without actions_before: nothing logged');
+
+	// Without both hooks: new_record() rebuilds the quote; the client still gets everything, and the
+	// missing figures in Zoho and the team email are logged.
+	r = await run(['process', 'actions_before']);
+	check((r.req.zoho[0] || {}).Description.indexOf('AED') === -1, 'without both hooks: the actions ran before any figure existed (Zoho without figures)');
+	check(r.req.error_log.indexOf('[lp-calc] quote fields written after the form actions for ' + r.q.ref) !== -1 && r.req.error_log.indexOf('@') === -1, 'without both hooks: logged, without personal data', r.req.error_log);
+	deq(r.req.tmp_after, [], 'temp dir empty');
 }
 
 (async function main() {
@@ -723,6 +829,7 @@ async function zohoFailure(browser, base) {
 		await validation(browser, server.base);
 		await rateLimit(browser, server.base, CUSTOMER.email);
 		await zohoFailure(browser, server.base);
+		await hookPaths(browser, server.base);
 	} catch (e) {
 		failures++;
 		console.log('  ERROR ' + (e && e.stack ? e.stack : e));

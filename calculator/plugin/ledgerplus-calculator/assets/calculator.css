@@ -1016,6 +1016,12 @@ body:not(.elementor-editor-active) .lp-calc .elementor-widget.lp-calc-form {
 
 .lp-calc__summary-total-label {
 	min-width: 0;
+	text-wrap: balance;
+}
+
+/* A quote reference never breaks at its hyphens. */
+.lp-calc__ref {
+	white-space: nowrap;
 }
 
 .lp-calc__summary-total--strong strong {

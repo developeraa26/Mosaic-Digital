@@ -4,11 +4,16 @@
  *
  * Elementor Pro (4.3.1) runs, in Ajax_Handler::ajax_send_form():
  *   1. Form_Record::validate()  -> action elementor_pro/forms/validation
- *   2. Form_Record::process_fields()
+ *   2. Form_Record::process_fields(), which ends with action elementor_pro/forms/process
  *   3. filter elementor_pro/forms/record/actions_before ($record, $ajax_handler)
  *   4. each action's run(): save-to-database, email, zoho_Ledgers_Plus
  *   5. action elementor_pro/forms/new_record ($record, $ajax_handler)
  *   6. send()
+ *
+ * The page has no prices: it sends the selection only, and the figure fields (quote_ref,
+ * quote_total, quote_summary) empty. The server prices the selection and writes the figure fields
+ * in step 2 and again in step 3, so the actions in step 4 get the server's figures even if one of
+ * those two hooks does not run.
  *
  * The Elementor Pro classes are never type-hinted, so this file loads without Elementor Pro.
  *
@@ -59,6 +64,7 @@ final class LP_Calc_Elementor {
 		}
 		self::$booted = true;
 		add_action( 'elementor_pro/forms/validation', array( __CLASS__, 'validate' ), 10, 2 );
+		add_action( 'elementor_pro/forms/process', array( __CLASS__, 'process' ), 10, 2 );
 		add_filter( 'elementor_pro/forms/record/actions_before', array( __CLASS__, 'actions_before' ), 10, 2 );
 		add_action( 'elementor_pro/forms/new_record', array( __CLASS__, 'new_record' ), 20, 2 );
 	}
@@ -133,6 +139,8 @@ final class LP_Calc_Elementor {
 		if ( ! self::is_calculator_form( $record ) || ! is_object( $ajax_handler ) ) {
 			return;
 		}
+		// A new submission: forget the quote of an earlier one in this PHP process.
+		self::$state = null;
 		try {
 			$values = self::values( $record );
 			$fields = $record->get( 'fields' );
@@ -379,6 +387,26 @@ final class LP_Calc_Elementor {
 	/* ------------------------------------------------------------------ 2. Before the actions */
 
 	/**
+	 * Action `elementor_pro/forms/process` (the end of Form_Record::process_fields(), before the
+	 * actions_before filter): prices the selection and writes the quote fields a first time.
+	 * actions_before() writes them again with the same ref. With both, Zoho and the team email get
+	 * the server's figures even if one of the two hooks does not run.
+	 *
+	 * @param object      $record       Form record.
+	 * @param object|null $ajax_handler Ajax handler.
+	 */
+	public static function process( $record, $ajax_handler = null ) {
+		if ( ! self::is_calculator_form( $record ) ) {
+			return;
+		}
+		try {
+			self::write_quote( $record );
+		} catch ( Throwable $e ) {
+			self::log( 'process failed: ' . self::describe( $e ) );
+		}
+	}
+
+	/**
 	 * Filter `elementor_pro/forms/record/actions_before`: prices the selection on the server and
 	 * writes the quote fields that the email and Zoho actions read.
 	 *
@@ -387,51 +415,71 @@ final class LP_Calc_Elementor {
 	 * @return object The record.
 	 */
 	public static function actions_before( $record, $ajax_handler = null ) {
-		self::$state = null;
 		if ( ! self::is_calculator_form( $record ) ) {
+			self::$state = null;
 			return $record;
 		}
 		try {
-			$norm = LP_Calc_Pricing::normalize( self::raw_selection( self::values( $record ) ) );
-			if ( ! empty( $norm['errors'] ) ) {
+			if ( null === self::write_quote( $record ) ) {
 				self::log( 'selection invalid after validation; quote fields not written' );
-				return $record;
 			}
-			$selection = $norm['selection'];
-			$quote     = LP_Calc_Pricing::compute( $selection );
-			$ref       = self::make_ref();
-
-			$services = (array) $selection['services'];
-			$updates  = array(
-				'quote_ref'          => $ref,
-				'quote_total'        => LP_Calc_Pricing::money( $quote['total'] ),
-				'quote_summary'      => LP_Calc_Pricing::summary_text( $selection, $quote, $ref ),
-				'field_lead_form'    => self::LEAD_FORM,
-				'lead_source'        => self::LEAD_SOURCE,
-				'lpc_services'       => LP_Calc_Pricing::services_text( $selection ),
-				// The saved submission must match the quote: inputs that do not apply are emptied,
-				// whatever the page (or a tampered post) sent.
-				'lpc_business'       => (string) $selection['business'],
-				'lpc_business_other' => 'Other' === $selection['business'] ? (string) $selection['business_other'] : '',
-				'lpc_employees'      => in_array( 'payroll', $services, true ) ? LP_Calc_Pricing::employees_label( $selection['employees'] ) : '',
-				'lpc_reports'        => in_array( 'reports', $services, true ) ? (string) (int) $selection['reports'] : '',
-			);
-			if ( method_exists( $record, 'update_field' ) ) {
-				foreach ( $updates as $id => $value ) {
-					$record->update_field( $id, 'value', $value );
-					$record->update_field( $id, 'raw_value', $value );
-				}
-			}
-
-			self::$state = array(
-				'selection' => $selection,
-				'quote'     => $quote,
-				'ref'       => $ref,
-			);
 		} catch ( Throwable $e ) {
+			self::$state = null;
 			self::log( 'actions_before failed: ' . self::describe( $e ) );
 		}
 		return $record;
+	}
+
+	/**
+	 * Prices the record's selection and overwrites the quote fields, whatever the page (or a
+	 * tampered post) sent. Keeps the ref when this record already has a quote (process() and then
+	 * actions_before()); otherwise makes a new one. The visitor's quote_ref is never used.
+	 *
+	 * @param object $record Form record.
+	 * @return array|null The state (selection, quote, ref), or null when the selection is invalid.
+	 */
+	private static function write_quote( $record ) {
+		$previous    = self::$state;
+		self::$state = null;
+
+		$norm = LP_Calc_Pricing::normalize( self::raw_selection( self::values( $record ) ) );
+		if ( ! empty( $norm['errors'] ) ) {
+			return null;
+		}
+		$selection = $norm['selection'];
+		$quote     = LP_Calc_Pricing::compute( $selection );
+		$key       = spl_object_hash( $record );
+		$ref       = is_array( $previous ) && isset( $previous['record'], $previous['ref'] ) && $key === $previous['record'] ? $previous['ref'] : self::make_ref();
+
+		$services = (array) $selection['services'];
+		$updates  = array(
+			'quote_ref'          => $ref,
+			'quote_total'        => LP_Calc_Pricing::money( $quote['total'] ),
+			'quote_summary'      => LP_Calc_Pricing::summary_text( $selection, $quote, $ref ),
+			'field_lead_form'    => self::LEAD_FORM,
+			'lead_source'        => self::LEAD_SOURCE,
+			'lpc_services'       => LP_Calc_Pricing::services_text( $selection ),
+			// The saved submission must match the quote: inputs that do not apply are emptied,
+			// whatever the page (or a tampered post) sent.
+			'lpc_business'       => (string) $selection['business'],
+			'lpc_business_other' => 'Other' === $selection['business'] ? (string) $selection['business_other'] : '',
+			'lpc_employees'      => in_array( 'payroll', $services, true ) ? LP_Calc_Pricing::employees_label( $selection['employees'] ) : '',
+			'lpc_reports'        => in_array( 'reports', $services, true ) ? (string) (int) $selection['reports'] : '',
+		);
+		if ( method_exists( $record, 'update_field' ) ) {
+			foreach ( $updates as $id => $value ) {
+				$record->update_field( $id, 'value', $value );
+				$record->update_field( $id, 'raw_value', $value );
+			}
+		}
+
+		self::$state = array(
+			'selection' => $selection,
+			'quote'     => $quote,
+			'ref'       => $ref,
+			'record'    => $key,
+		);
+		return self::$state;
 	}
 
 	/**
@@ -550,23 +598,19 @@ final class LP_Calc_Elementor {
 	}
 
 	/**
-	 * Rebuilds the state when actions_before did not run for this record.
+	 * Rebuilds the state when neither process() nor actions_before() priced this record. The quote
+	 * fields are written now (with a new server ref), so the record matches the client email, but
+	 * the form actions have already run without them: that is logged.
 	 *
 	 * @param object $record Form record.
 	 * @return array|null
 	 */
 	private static function state_from_record( $record ) {
-		$values = self::values( $record );
-		$norm   = LP_Calc_Pricing::normalize( self::raw_selection( $values ) );
-		if ( ! empty( $norm['errors'] ) ) {
-			return null;
+		$state = self::write_quote( $record );
+		if ( null !== $state ) {
+			self::log( 'quote fields written after the form actions for ' . $state['ref'] . '; Zoho and the team email may lack the figures' );
 		}
-		$ref = isset( $values['quote_ref'] ) && preg_match( '/^LPQ-\d{6}-[0-9A-F]{5}$/', $values['quote_ref'] ) ? $values['quote_ref'] : self::make_ref();
-		return array(
-			'selection' => $norm['selection'],
-			'quote'     => LP_Calc_Pricing::compute( $norm['selection'] ),
-			'ref'       => $ref,
-		);
+		return $state;
 	}
 
 	/**

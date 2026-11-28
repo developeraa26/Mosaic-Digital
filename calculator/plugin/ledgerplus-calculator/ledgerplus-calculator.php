@@ -3,7 +3,7 @@
  * Plugin Name:       Ledger Plus Package Calculator
  * Plugin URI:        https://ledgerplus.ae/
  * Description:       Package cost calculator for Ledger Plus UAE. Adds the [lp_package_calculator] shortcode, checks and prices the Elementor Pro form "Ledger Plus package calculator" on the server, and emails the client a branded estimate with a PDF quotation.
- * Version:           1.0.0
+ * Version:           1.1.0
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * Author:            Ledger Plus UAE
@@ -21,7 +21,7 @@ if ( defined( 'LP_CALC_VERSION' ) ) {
 	return;
 }
 
-define( 'LP_CALC_VERSION', '1.0.0' );
+define( 'LP_CALC_VERSION', '1.1.0' );
 define( 'LP_CALC_FILE', __FILE__ );
 define( 'LP_CALC_DIR', plugin_dir_path( __FILE__ ) );
 define( 'LP_CALC_URL', plugin_dir_url( __FILE__ ) );

@@ -3,11 +3,14 @@
  * Calculator markup, output by the [lp_package_calculator] shortcode.
  *
  * In scope:
- * - $config    array  LP_Calc_Pricing::config() (already filtered with lp_calc_config).
+ * - $config    array  LP_Calc_Pricing::browser_config(): the choices and labels, without prices.
  * - $is_editor bool   current_user_can( 'edit_posts' ): shows the missing-form notice to editors only.
  *
  * Steps 1-4 are plain controls outside any form. Step 5 has an empty slot that calculator.js fills
  * with the page's Elementor Pro form (the widget with the CSS class "lp-calc-form").
+ *
+ * The page carries no prices: no amount is printed here, and the config has none. The price shows
+ * only on the result screen, from the server's response to the submission.
  *
  * @package LedgerPlusCalculator
  */
@@ -17,21 +20,7 @@ defined( 'ABSPATH' ) || exit;
 $config    = isset( $config ) && is_array( $config ) ? $config : array();
 $is_editor = ! empty( $is_editor );
 
-$lp_currency = isset( $config['currency'] ) ? (string) $config['currency'] : 'AED';
-$lp_prices   = isset( $config['prices'] ) && is_array( $config['prices'] ) ? $config['prices'] : array();
-$lp_vat_rate = isset( $config['vat_rate'] ) ? (float) $config['vat_rate'] : 5;
-$lp_vat_rate = ( floor( $lp_vat_rate ) === $lp_vat_rate ) ? (string) (int) $lp_vat_rate : (string) $lp_vat_rate;
 $lp_defaults = isset( $config['defaults'] ) && is_array( $config['defaults'] ) ? $config['defaults'] : array();
-$lp_total_label = isset( $config['total_label'] ) && '' !== $config['total_label']
-	? (string) $config['total_label']
-	: sprintf( 'Estimated annual total (incl. %s%% VAT)', $lp_vat_rate );
-
-$lp_money = static function ( $amount ) use ( $lp_currency ) {
-	return $lp_currency . ' ' . number_format( (int) round( (float) $amount ) );
-};
-$lp_price = static function ( $key ) use ( $lp_prices ) {
-	return isset( $lp_prices[ $key ] ) && is_numeric( $lp_prices[ $key ] ) ? (int) $lp_prices[ $key ] : 0;
-};
 
 /*
  * Option lists accept plain values or array( 'value' => …, 'label' => … ) items.
@@ -85,40 +74,20 @@ $lp_default_emp      = isset( $lp_defaults['employees'] ) ? (string) $lp_default
 $lp_default_reports  = isset( $lp_defaults['reports'] ) ? (string) $lp_defaults['reports'] : '4';
 $lp_default_services = isset( $lp_defaults['services'] ) ? array_map( 'strval', (array) $lp_defaults['services'] ) : array( 'einvoicing' );
 
-// The default estimate (e-invoicing at 1,000 transactions), printed so the page shows the right
-// total and lines before calculator.js runs. calculator.js renders the same markup on every change.
-$lp_quote = array(
-	'lines' => array(),
-	'total' => 0,
-);
-if ( class_exists( 'LP_Calc_Pricing' ) ) {
-	$lp_quote = LP_Calc_Pricing::compute(
+// The default package (e-invoicing at 1,000 transactions), printed so step 5 is right before
+// calculator.js runs. calculator.js renders the same markup on every change. No amounts.
+$lp_package = array();
+if ( class_exists( 'LP_Calc_Pricing' ) && method_exists( 'LP_Calc_Pricing', 'package_lines' ) ) {
+	$lp_package = LP_Calc_Pricing::package_lines(
 		array(
 			'services'     => $lp_default_services,
 			'transactions' => (int) $lp_default_tx,
 			'employees'    => $lp_default_emp,
 			'reports'      => (int) $lp_default_reports,
-		)
+		),
+		$config
 	);
 }
-$lp_lines = static function ( $with_detail ) use ( $lp_quote, $lp_money ) {
-	if ( empty( $lp_quote['lines'] ) ) {
-		echo '<li class="lp-calc__line lp-calc__line--empty">' . esc_html__( 'Choose at least one service in step 4.', 'ledgerplus-calculator' ) . '</li>';
-		return;
-	}
-	foreach ( $lp_quote['lines'] as $lp_line ) {
-		$lp_amount = 0 === (int) $lp_line['amount'] ? __( 'Included', 'ledgerplus-calculator' ) : $lp_money( $lp_line['amount'] );
-		$lp_detail = $with_detail ? (string) $lp_line['detail'] : '';
-		if ( 0 === strcasecmp( $lp_detail, $lp_amount ) ) {
-			$lp_detail = '';
-		}
-		echo '<li class="lp-calc__line"><span class="lp-calc__line-text"><span class="lp-calc__line-label">' . esc_html( $lp_line['label'] ) . '</span>';
-		if ( '' !== $lp_detail ) {
-			echo '<span class="lp-calc__line-detail">' . esc_html( $lp_detail ) . '</span>';
-		}
-		echo '</span><span class="lp-calc__line-amount">' . esc_html( $lp_amount ) . '</span></li>';
-	}
-};
 
 // Short card descriptions when the config has none.
 $lp_descriptions = array(
@@ -130,7 +99,7 @@ $lp_descriptions = array(
 	'expense'         => 'Expense claims and receipts tracked.',
 	'invoicing'       => 'Invoices issued and customer payments tracked.',
 	'einvoicing'      => 'UAE e-invoicing, priced by your annual transactions.',
-	'account_manager' => 'One point of contact for your account, at no extra charge.',
+	'account_manager' => 'One point of contact for your account.',
 );
 
 // Status labels for the Yes / No cards.
@@ -155,7 +124,6 @@ $lp_icon_arrow = '<svg class="lp-calc__icon" viewBox="0 0 20 20" width="18" heig
 $lp_icon_back  = '<svg class="lp-calc__icon" viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" focusable="false"><path d="M16 10H5m4.5-4.5L5 10l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 $lp_icon_check = '<svg class="lp-calc__icon" viewBox="0 0 20 20" width="14" height="14" aria-hidden="true" focusable="false"><path d="M4.5 10.5l3.5 3.5 7.5-8" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 $lp_icon_mail  = '<svg class="lp-calc__icon" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false"><rect x="3" y="5" width="18" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4 7l8 6 8-6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-$lp_icon_chev  = '<svg class="lp-calc__icon lp-calc__chev" viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" focusable="false"><path d="M5.5 12.5L10 8l4.5 4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 ?>
 <style id="lp-calc-preload">body:not(.elementor-editor-active) .elementor-widget.lp-calc-form{display:none}body:not(.elementor-editor-active) .lp-calc .elementor-widget.lp-calc-form{display:block}</style>
 <div class="lp-calc" data-lp-calc id="<?php echo esc_attr( $lp_uid ); ?>">
@@ -163,27 +131,20 @@ $lp_icon_chev  = '<svg class="lp-calc__icon lp-calc__chev" viewBox="0 0 20 20" w
 
 	<div class="lp-calc__workspace">
 		<aside class="lp-calc__rail" aria-label="<?php esc_attr_e( 'Your package setup', 'ledgerplus-calculator' ); ?>">
-			<div class="lp-calc__rail-card">
-				<p class="lp-calc__rail-label"><?php esc_html_e( 'Your package setup', 'ledgerplus-calculator' ); ?></p>
-				<ol class="lp-calc__steps" data-lp-calc-steps>
-					<?php foreach ( $lp_steps as $lp_n => $lp_name ) : ?>
-						<li class="lp-calc__step<?php echo 1 === $lp_n ? ' is-active' : ''; ?>" data-lp-calc-step="<?php echo esc_attr( $lp_n ); ?>"<?php echo 1 === $lp_n ? ' aria-current="step"' : ''; ?>>
-							<span class="lp-calc__step-num" aria-hidden="true"><span class="lp-calc__step-digit"><?php echo esc_html( $lp_n ); ?></span><?php echo $lp_icon_check; // phpcs:ignore WordPress.Security.EscapeOutput -- static SVG. ?></span>
-							<span class="lp-calc__step-name"><span class="lp-calc__sr"><?php echo esc_html( sprintf( 'Step %d: ', $lp_n ) ); ?></span><?php echo esc_html( $lp_name ); ?></span>
-						</li>
-					<?php endforeach; ?>
-				</ol>
-			</div>
-
 			<div class="lp-calc__rail-sticky">
-				<div class="lp-calc__estimate">
-					<p class="lp-calc__estimate-label"><?php esc_html_e( 'Estimated annual total', 'ledgerplus-calculator' ); ?></p>
-					<p class="lp-calc__estimate-total" data-lp-calc-total aria-live="polite" aria-atomic="true"><?php echo esc_html( $lp_money( $lp_quote['total'] ) ); ?></p>
-					<p class="lp-calc__estimate-note"><?php echo esc_html( sprintf( 'Billed annually, incl. %s%% VAT', $lp_vat_rate ) ); ?></p>
-					<ul class="lp-calc__lines lp-calc__lines--rail" data-lp-calc-lines="rail"><?php $lp_lines( false ); ?></ul>
+				<div class="lp-calc__rail-card">
+					<p class="lp-calc__rail-label"><?php esc_html_e( 'Your package setup', 'ledgerplus-calculator' ); ?></p>
+					<ol class="lp-calc__steps" data-lp-calc-steps>
+						<?php foreach ( $lp_steps as $lp_n => $lp_name ) : ?>
+							<li class="lp-calc__step<?php echo 1 === $lp_n ? ' is-active' : ''; ?>" data-lp-calc-step="<?php echo esc_attr( $lp_n ); ?>"<?php echo 1 === $lp_n ? ' aria-current="step"' : ''; ?>>
+								<span class="lp-calc__step-num" aria-hidden="true"><span class="lp-calc__step-digit"><?php echo esc_html( $lp_n ); ?></span><?php echo $lp_icon_check; // phpcs:ignore WordPress.Security.EscapeOutput -- static SVG. ?></span>
+								<span class="lp-calc__step-name"><span class="lp-calc__sr"><?php echo esc_html( sprintf( 'Step %d: ', $lp_n ) ); ?></span><?php echo esc_html( $lp_name ); ?></span>
+							</li>
+						<?php endforeach; ?>
+					</ol>
 				</div>
 
-				<div class="lp-calc__help">
+				<div class="lp-calc__help lp-calc__help--rail">
 					<p class="lp-calc__help-title"><?php esc_html_e( 'Need a hand?', 'ledgerplus-calculator' ); ?></p>
 					<p class="lp-calc__help-text"><?php esc_html_e( 'Our Ledger Plus team can help you choose the right setup for your business.', 'ledgerplus-calculator' ); ?></p>
 					<a class="lp-calc__help-link" href="tel:+971503420832">+971 50 342 0832</a>
@@ -249,9 +210,7 @@ $lp_icon_chev  = '<svg class="lp-calc__icon lp-calc__chev" viewBox="0 0 20 20" w
 								<?php endforeach; ?>
 							</select>
 						</div>
-						<p class="lp-calc__hint" id="<?php echo esc_attr( $lp_uid ); ?>-hint-transactions">
-							<?php echo esc_html( sprintf( 'Used for UAE e-invoicing pricing: %s per 1,000 transactions a year.', $lp_money( $lp_price( 'einvoicing_per_1000' ) ) ) ); ?>
-						</p>
+						<p class="lp-calc__hint" id="<?php echo esc_attr( $lp_uid ); ?>-hint-transactions"><?php esc_html_e( 'We use this to price your UAE e-invoicing.', 'ledgerplus-calculator' ); ?></p>
 					</div>
 
 					<p class="lp-calc__note"><?php esc_html_e( 'Not sure? Choose the closest volume. Our team confirms the details with you before anything is final.', 'ledgerplus-calculator' ); ?></p>
@@ -294,7 +253,7 @@ $lp_icon_chev  = '<svg class="lp-calc__icon lp-calc__chev" viewBox="0 0 20 20" w
 				<?php /* Step 4: Services */ ?>
 				<div class="lp-calc__panel" data-lp-calc-panel="4" hidden>
 					<h2 class="lp-calc__title" id="<?php echo esc_attr( $lp_uid ); ?>-h4" tabindex="-1"><?php esc_html_e( 'Choose the services you need.', 'ledgerplus-calculator' ); ?></h2>
-					<p class="lp-calc__intro"><?php esc_html_e( 'Select one or more services. Your estimate updates as you go.', 'ledgerplus-calculator' ); ?></p>
+					<p class="lp-calc__intro"><?php esc_html_e( 'Select one or more services.', 'ledgerplus-calculator' ); ?></p>
 
 					<fieldset class="lp-calc__fieldset" data-lp-calc-field="services" aria-describedby="<?php echo esc_attr( $lp_uid ); ?>-err-services">
 						<legend class="lp-calc__legend"><?php esc_html_e( 'Services', 'ledgerplus-calculator' ); ?></legend>
@@ -315,9 +274,6 @@ $lp_icon_chev  = '<svg class="lp-calc__icon lp-calc__chev" viewBox="0 0 20 20" w
 											<span class="lp-calc__service-name"><?php echo esc_html( isset( $lp_service['label'] ) ? $lp_service['label'] : $lp_key ); ?></span>
 											<?php if ( '' !== $lp_desc ) : ?>
 												<span class="lp-calc__service-desc" id="<?php echo esc_attr( $lp_id . '-desc' ); ?>"><?php echo esc_html( $lp_desc ); ?></span>
-											<?php endif; ?>
-											<?php if ( ! empty( $lp_service['hint'] ) ) : ?>
-												<span class="lp-calc__service-price"><?php echo esc_html( $lp_service['hint'] ); ?></span>
 											<?php endif; ?>
 										</span>
 									</label>
@@ -357,18 +313,21 @@ $lp_icon_chev  = '<svg class="lp-calc__icon lp-calc__chev" viewBox="0 0 20 20" w
 				<div class="lp-calc__panel" data-lp-calc-panel="5" hidden>
 					<div class="lp-calc__contact" data-lp-calc-contact>
 						<h2 class="lp-calc__title" id="<?php echo esc_attr( $lp_uid ); ?>-h5" tabindex="-1"><?php esc_html_e( 'Where should we send your quotation?', 'ledgerplus-calculator' ); ?></h2>
-						<p class="lp-calc__intro"><?php esc_html_e( 'Leave your details and we will send your quotation.', 'ledgerplus-calculator' ); ?></p>
+						<p class="lp-calc__intro"><?php esc_html_e( 'Leave your details to see your price.', 'ledgerplus-calculator' ); ?></p>
 
 						<div class="lp-calc__summary">
-							<p class="lp-calc__summary-title"><?php esc_html_e( 'Your estimate', 'ledgerplus-calculator' ); ?></p>
-							<ul class="lp-calc__lines lp-calc__lines--summary" data-lp-calc-lines="summary"><?php $lp_lines( true ); ?></ul>
-							<div class="lp-calc__summary-total">
-								<span><?php echo esc_html( $lp_total_label ); ?></span>
-								<strong data-lp-calc-total-static><?php echo esc_html( $lp_money( $lp_quote['total'] ) ); ?></strong>
-							</div>
+							<p class="lp-calc__summary-title"><?php esc_html_e( 'Your package', 'ledgerplus-calculator' ); ?></p>
+							<ul class="lp-calc__lines lp-calc__lines--package" data-lp-calc-package><?php
+							if ( empty( $lp_package ) ) {
+								echo '<li class="lp-calc__line lp-calc__line--empty">' . esc_html__( 'Choose at least one service in step 4.', 'ledgerplus-calculator' ) . '</li>';
+							}
+							foreach ( $lp_package as $lp_line ) {
+								echo '<li class="lp-calc__line"><span class="lp-calc__line-text"><span class="lp-calc__line-label">' . esc_html( $lp_line['label'] ) . '</span><span class="lp-calc__line-detail">' . esc_html( $lp_line['detail'] ) . '</span></span></li>';
+							}
+							?></ul>
 						</div>
 
-						<p class="lp-calc__pdf-note"><?php echo $lp_icon_mail; // phpcs:ignore WordPress.Security.EscapeOutput -- static SVG. ?><span><?php esc_html_e( "We'll email this quotation to you as a PDF.", 'ledgerplus-calculator' ); ?></span></p>
+						<p class="lp-calc__pdf-note"><?php echo $lp_icon_mail; // phpcs:ignore WordPress.Security.EscapeOutput -- static SVG. ?><span><?php esc_html_e( "We'll also email your quotation to you as a PDF.", 'ledgerplus-calculator' ); ?></span></p>
 
 						<div class="lp-calc__form-slot" data-lp-calc-form-slot></div>
 
@@ -390,22 +349,6 @@ $lp_icon_chev  = '<svg class="lp-calc__icon lp-calc__chev" viewBox="0 0 20 20" w
 				</div>
 			</div>
 
-			<div class="lp-calc__bar" data-lp-calc-bar>
-				<div class="lp-calc__bar-panel" id="<?php echo esc_attr( $lp_uid ); ?>-breakdown" data-lp-calc-bar-panel hidden>
-					<p class="lp-calc__bar-heading"><?php esc_html_e( 'Your estimate', 'ledgerplus-calculator' ); ?></p>
-					<ul class="lp-calc__lines lp-calc__lines--bar" data-lp-calc-lines="bar"><?php $lp_lines( true ); ?></ul>
-					<p class="lp-calc__bar-note"><?php echo esc_html( sprintf( 'Prices are annual and include %s%% VAT.', $lp_vat_rate ) ); ?></p>
-				</div>
-				<div class="lp-calc__bar-row" data-lp-calc-bar-row>
-					<p class="lp-calc__bar-sum">
-						<span class="lp-calc__bar-label"><?php esc_html_e( 'Estimated annual total', 'ledgerplus-calculator' ); ?></span>
-						<span class="lp-calc__bar-total" data-lp-calc-total aria-live="polite" aria-atomic="true"><?php echo esc_html( $lp_money( $lp_quote['total'] ) ); ?></span>
-					</p>
-					<button type="button" class="lp-calc__bar-toggle" aria-expanded="false" aria-controls="<?php echo esc_attr( $lp_uid ); ?>-breakdown" data-lp-calc-bar-toggle>
-						<span data-lp-calc-bar-toggle-text><?php esc_html_e( 'Breakdown', 'ledgerplus-calculator' ); ?></span><?php echo $lp_icon_chev; // phpcs:ignore WordPress.Security.EscapeOutput -- static SVG. ?>
-					</button>
-				</div>
-			</div>
 		</section>
 
 		<?php /* Phones and tablets (850px and narrower) hide the rail's help box: the same links, below the card. */ ?>

@@ -82,6 +82,9 @@ final class LP_Calc_Shortcode {
 	/**
 	 * Shortcode output: templates/calculator.php with $config and $is_editor in scope.
 	 *
+	 * $config is LP_Calc_Pricing::browser_config(): the choices and labels, without prices. The
+	 * page shows prices only after the server has priced a submission.
+	 *
 	 * @param array|string $atts    Attributes (none used).
 	 * @param string|null  $content Content.
 	 * @return string
@@ -93,7 +96,7 @@ final class LP_Calc_Shortcode {
 		if ( ! is_readable( $template ) ) {
 			return '';
 		}
-		$config    = LP_Calc_Pricing::config();
+		$config    = LP_Calc_Pricing::browser_config();
 		$is_editor = current_user_can( 'edit_posts' );
 
 		ob_start();
@@ -110,7 +113,7 @@ final class LP_Calc_Shortcode {
 	/**
 	 * The config as a JSON script element.
 	 *
-	 * @param array $config Config.
+	 * @param array $config Config from LP_Calc_Pricing::browser_config().
 	 * @return string
 	 */
 	public static function config_script( array $config ) {

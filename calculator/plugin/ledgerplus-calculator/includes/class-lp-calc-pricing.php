@@ -102,7 +102,9 @@ final class LP_Calc_Pricing {
 	}
 
 	/**
-	 * Everything the UI needs. Filterable as a whole with `lp_calc_config`.
+	 * The full config: choices, labels, prices and the service price `hint` texts. Filterable as a
+	 * whole with `lp_calc_config`. The server prices quotes with it; the page gets only
+	 * browser_config(), which has no prices.
 	 *
 	 * If a filter changes `prices`, it should change the matching service `hint` too.
 	 *
@@ -124,7 +126,8 @@ final class LP_Calc_Pricing {
 			'account_manager' => 'Included',
 		);
 
-		// Short factual descriptions for the service cards (optional for the UI).
+		// Short factual descriptions for the service cards (optional for the UI). No prices: the
+		// page shows prices only after the visitor has sent their details.
 		$descriptions = array(
 			'accounting'      => 'Bookkeeping and accounts kept up to date all year.',
 			'reports'         => 'Financial reports each quarter, 1 to 4 a year.',
@@ -134,7 +137,7 @@ final class LP_Calc_Pricing {
 			'expense'         => 'Expense claims and receipts tracked.',
 			'invoicing'       => 'Invoices issued and customer payments tracked.',
 			'einvoicing'      => 'UAE e-invoicing, priced by your annual transactions.',
-			'account_manager' => 'One point of contact for your account, at no extra charge.',
+			'account_manager' => 'One point of contact for your account.',
 		);
 
 		$services = array();
@@ -207,6 +210,125 @@ final class LP_Calc_Pricing {
 		}
 		$filtered['prices'] = self::sanitize_prices( isset( $filtered['prices'] ) ? $filtered['prices'] : array() );
 		return $filtered;
+	}
+
+	/**
+	 * The part of config() the page gets: the choices and their labels, without prices.
+	 *
+	 * Built from the filtered config(), so an `lp_calc_config` filter still applies first. Only the
+	 * keys below are copied. `prices`, `currency`, `vat_rate` and the service `hint` texts never
+	 * reach the page, and a service description that names the currency or an extra charge is
+	 * left out. The page shows prices only after the server has priced a submission.
+	 *
+	 * @return array
+	 */
+	public static function browser_config() {
+		$config = self::config();
+		$out    = array();
+		foreach ( array( 'business_types', 'transactions', 'reports_options', 'employees', 'statuses' ) as $key ) {
+			if ( isset( $config[ $key ] ) && is_array( $config[ $key ] ) ) {
+				$out[ $key ] = $config[ $key ];
+			}
+		}
+
+		$out['services'] = array();
+		$services        = isset( $config['services'] ) && is_array( $config['services'] ) ? $config['services'] : array();
+		foreach ( $services as $service ) {
+			if ( ! is_array( $service ) || empty( $service['key'] ) || ! is_scalar( $service['key'] ) ) {
+				continue;
+			}
+			$item = array(
+				'key'   => (string) $service['key'],
+				'label' => isset( $service['label'] ) && is_scalar( $service['label'] ) ? (string) $service['label'] : (string) $service['key'],
+			);
+			if ( isset( $service['description'] ) && is_scalar( $service['description'] ) && '' !== (string) $service['description'] && ! self::mentions_price( $service['description'] ) ) {
+				$item['description'] = (string) $service['description'];
+			}
+			$out['services'][] = $item;
+		}
+
+		$defaults        = isset( $config['defaults'] ) && is_array( $config['defaults'] ) ? $config['defaults'] : array();
+		$out['defaults'] = array();
+		foreach ( array( 'transactions', 'employees', 'reports', 'services' ) as $key ) {
+			if ( isset( $defaults[ $key ] ) ) {
+				$out['defaults'][ $key ] = $defaults[ $key ];
+			}
+		}
+
+		// The label of the total on the result screen, next to the server's figures.
+		$out['total_label'] = isset( $config['total_label'] ) && is_scalar( $config['total_label'] ) && '' !== (string) $config['total_label'] ? (string) $config['total_label'] : self::TOTAL_LABEL;
+		return $out;
+	}
+
+	/**
+	 * The "Your package" lines of step 5: one per selected service, with a short detail and no
+	 * amount. calculator.js builds the same lines in the browser (test/ui/no-prices.test.js
+	 * compares them for every selection).
+	 *
+	 * @param array      $selection Selection (services, transactions, vat_status, ct_status, employees, reports).
+	 * @param array|null $config    From browser_config() (default): labels for services and options.
+	 * @return array<int,array{key:string,label:string,detail:string}>
+	 */
+	public static function package_lines( array $selection, $config = null ) {
+		$config  = is_array( $config ) ? $config : self::browser_config();
+		$sel     = array_merge( self::DEFAULTS, $selection );
+		$chosen  = is_array( $sel['services'] ) ? $sel['services'] : array();
+		$options = static function ( $key, $value, $fallback ) use ( $config ) {
+			foreach ( isset( $config[ $key ] ) ? (array) $config[ $key ] : array() as $item ) {
+				if ( is_array( $item ) && isset( $item['value'], $item['label'] ) && (string) $item['value'] === (string) $value ) {
+					return (string) $item['label'];
+				}
+			}
+			return $fallback;
+		};
+		$lines = array();
+		foreach ( isset( $config['services'] ) ? (array) $config['services'] : array() as $service ) {
+			$key = is_array( $service ) && isset( $service['key'] ) ? (string) $service['key'] : '';
+			if ( '' === $key || ! in_array( $key, $chosen, true ) ) {
+				continue;
+			}
+			switch ( $key ) {
+				case 'reports':
+					$n      = in_array( (int) $sel['reports'], self::REPORTS_OPTIONS, true ) ? (int) $sel['reports'] : 4;
+					$detail = $n . ( 1 === $n ? ' report a year' : ' reports a year' );
+					break;
+				case 'vat':
+					$detail = 'not_registered' === $sel['vat_status'] ? 'Includes VAT registration' : 'Already VAT registered';
+					break;
+				case 'ct':
+					$detail = 'registered' === $sel['ct_status'] ? 'Already registered for Corporate Tax' : 'Includes Corporate Tax registration';
+					break;
+				case 'payroll':
+					$emp    = 'over_20' === $sel['employees'] ? 'over_20' : 'up_to_20';
+					$detail = $options( 'employees', $emp, self::employees_label( $emp ) );
+					break;
+				case 'einvoicing':
+					$tx     = max( 0, (int) $sel['transactions'] );
+					$detail = $options( 'transactions', $tx, self::transactions_label( $tx ) );
+					break;
+				case 'account_manager':
+					$detail = 'One point of contact';
+					break;
+				default: // accounting, expense, invoicing, and any service a filter adds.
+					$detail = 'Annual service';
+			}
+			$lines[] = array(
+				'key'    => $key,
+				'label'  => isset( $service['label'] ) && '' !== (string) $service['label'] ? (string) $service['label'] : $key,
+				'detail' => $detail,
+			);
+		}
+		return $lines;
+	}
+
+	/**
+	 * Does the text state a price: the currency code (AED) or an extra charge?
+	 *
+	 * @param mixed $text Text.
+	 * @return bool
+	 */
+	public static function mentions_price( $text ) {
+		return is_scalar( $text ) && 1 === preg_match( '/\b' . preg_quote( self::CURRENCY, '/' ) . '\b|extra charge|\bfree of charge\b/i', (string) $text );
 	}
 
 	/**

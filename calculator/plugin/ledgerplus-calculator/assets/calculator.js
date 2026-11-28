@@ -1,12 +1,13 @@
 /*!
  * Ledger Plus package calculator (front end).
  *
- * Reads the pricing config printed by templates/calculator.php, runs the five steps, keeps the live
- * estimate up to date, moves the page's Elementor Pro form (widget class "lp-calc-form") into step 5,
- * writes the hidden lpc_* fields and shows the server's quote after a successful submit.
+ * Reads the config printed by templates/calculator.php (choices and labels, no prices), runs the five
+ * steps, lists the selected services in step 5 ("Your package"), moves the page's Elementor Pro form
+ * (widget class "lp-calc-form") into step 5, writes the hidden lpc_* fields and shows the server's
+ * quote after a successful submit.
  *
- * Prices come only from config.prices. The server recalculates everything; this is the estimate.
- * In Node, require() returns the pure helpers (compute, money) for the parity tests.
+ * The browser prices nothing: the price shows only on the result screen, from the server's response
+ * (lp_quote). In Node, require() returns the pure helper packageLines() for the tests.
  */
 (function (root, factory) {
 	'use strict';
@@ -24,6 +25,8 @@
 	var doc = win && win.document;
 	var STEPS = 5;
 	var HIDDEN_KEYS = ['lpc_version', 'lpc_business', 'lpc_business_other', 'lpc_transactions', 'lpc_vat_status', 'lpc_ct_status', 'lpc_employees', 'lpc_reports', 'lpc_services'];
+	/** Figure fields: the server writes them; the browser sends them empty. */
+	var FIGURE_KEYS = ['quote_ref', 'quote_total', 'quote_summary'];
 	var FORM_ACTION = 'elementor_pro_forms_send_form';
 	/** Same rule as LP_Calc_Pricing::LINK_PATTERN: text a mail app or PDF viewer would turn into a link. */
 	var LINK_RE = /:\/\/|\bwww\.|@|\bmailto:/i;
@@ -32,8 +35,13 @@
 		step: 'STEP',
 		done: 'QUOTATION SENT',
 		received: 'REQUEST RECEIVED',
-		included: 'Included',
 		noServices: 'Choose at least one service in step 4.',
+		annual: 'Annual service',
+		vatIncluded: 'Includes VAT registration',
+		vatAlready: 'Already VAT registered',
+		ctIncluded: 'Includes Corporate Tax registration',
+		ctAlready: 'Already registered for Corporate Tax',
+		accountManager: 'One point of contact',
 		errBusiness: 'Please choose your business activity.',
 		errBusinessOther: 'Please tell us your business activity (up to 80 characters).',
 		errBusinessOtherLink: 'Please describe your business activity without a web or email address.',
@@ -48,13 +56,11 @@
 		errPhone: 'Please enter a valid contact number (at least 6 digits).',
 		errMessage: 'Please keep your notes to 1,000 characters or fewer.',
 		errRequired: 'This field is required.',
-		breakdown: 'Breakdown',
-		hide: 'Hide',
 		next: 'What happens next',
 		nextText: 'A Ledger Plus advisor will review your selections and contact you within one business day to confirm scope and pricing.',
 		startAgain: 'Start again',
 		yourQuote: 'Your quotation',
-		yourEstimate: 'Your estimate'
+		yourPackage: 'Your package'
 	};
 
 	/* ------------------------------------------------------------------ */
@@ -65,16 +71,6 @@
 		n = Math.round(Number(n) || 0);
 		var s = String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
 		return (n < 0 ? '-' : '') + s;
-	}
-
-	function money(n, cfg) {
-		return ((cfg && cfg.currency) || 'AED') + ' ' + fmtInt(n);
-	}
-
-	function price(cfg, key) {
-		var p = (cfg && cfg.prices) || {};
-		var v = Number(p[key]);
-		return isFinite(v) ? Math.round(v) : 0;
 	}
 
 	function optionLabel(list, value, fallback) {
@@ -97,88 +93,49 @@
 	}
 
 	/**
-	 * Prices a selection exactly like LP_Calc_Pricing::compute().
+	 * The "Your package" lines: one per selected service, in config order, with a short detail and no
+	 * amount. Same lines as LP_Calc_Pricing::package_lines() on the server.
 	 *
-	 * @param {Object} cfg Config from LP_Calc_Pricing::config().
+	 * @param {Object} cfg Config from LP_Calc_Pricing::browser_config().
 	 * @param {Object} sel {services:[keys], transactions, vat_status, ct_status, employees, reports}
-	 * @return {{lines: Array<{key,label,detail,amount}>, total: number}}
+	 * @return {Array<{key, label, detail}>}
 	 */
-	function compute(cfg, sel) {
+	function packageLines(cfg, sel) {
 		var chosen = (sel && sel.services) || [];
 		var lines = [];
-		var total = 0;
 		((cfg && cfg.services) || []).forEach(function (svc) {
-			if (!svc || chosen.indexOf(svc.key) === -1) {
+			if (!svc || !svc.key || chosen.indexOf(svc.key) === -1) {
 				return;
 			}
-			var line = priceLine(cfg, svc, sel);
-			lines.push(line);
-			total += line.amount;
+			lines.push({ key: svc.key, label: String(svc.label || svc.key), detail: packageDetail(cfg, svc.key, sel) });
 		});
-		return { lines: lines, total: total };
+		return lines;
 	}
 
-	function priceLine(cfg, svc, sel) {
-		var amount = 0;
-		var detail = '';
+	function packageDetail(cfg, key, sel) {
 		var n;
-		switch (svc.key) {
-			case 'accounting':
-				amount = price(cfg, 'accounting');
-				detail = 'Annual service';
-				break;
+		switch (key) {
 			case 'reports':
 				n = parseInt(sel.reports, 10);
 				if (reportsOptions(cfg).indexOf(n) === -1) {
 					n = 4;
 				}
-				amount = n * price(cfg, 'report_each');
-				detail = n + (n === 1 ? ' report' : ' reports') + ' a year × ' + money(price(cfg, 'report_each'), cfg);
-				break;
+				return n + (n === 1 ? ' report a year' : ' reports a year');
 			case 'vat':
-				if (sel.vat_status === 'not_registered') {
-					amount = price(cfg, 'vat') + price(cfg, 'vat_registration');
-					detail = 'Includes VAT registration (' + money(price(cfg, 'vat_registration'), cfg) + ')';
-				} else {
-					amount = price(cfg, 'vat');
-					detail = 'Already VAT registered';
-				}
-				break;
+				return sel.vat_status === 'not_registered' ? TEXT.vatIncluded : TEXT.vatAlready;
 			case 'ct':
-				if (sel.ct_status === 'registered') {
-					amount = price(cfg, 'ct_registered');
-					detail = 'Already registered for Corporate Tax';
-				} else {
-					amount = price(cfg, 'ct_not_registered');
-					detail = 'Includes Corporate Tax registration';
-				}
-				break;
+				return sel.ct_status === 'registered' ? TEXT.ctAlready : TEXT.ctIncluded;
 			case 'payroll':
-				amount = price(cfg, 'payroll');
-				if (sel.employees === 'over_20') {
-					amount += price(cfg, 'payroll_over_20');
-				}
-				detail = optionLabel(cfg.employees, sel.employees === 'over_20' ? 'over_20' : 'up_to_20',
-					sel.employees === 'over_20' ? 'More than 20 employees' : 'Up to 20 employees');
-				break;
+				n = sel.employees === 'over_20' ? 'over_20' : 'up_to_20';
+				return optionLabel(cfg.employees, n, n === 'over_20' ? 'More than 20 employees' : 'Up to 20 employees');
 			case 'einvoicing':
 				n = Math.max(0, parseInt(sel.transactions, 10) || 0);
-				amount = Math.ceil(n / 1000) * price(cfg, 'einvoicing_per_1000');
-				detail = fmtInt(n) + ' transactions a year (' + money(price(cfg, 'einvoicing_per_1000'), cfg) + ' per 1,000)';
-				break;
+				return optionLabel(cfg.transactions, n, fmtInt(n) + ' transactions a year');
 			case 'account_manager':
-				amount = price(cfg, 'account_manager');
-				detail = 'Included';
-				break;
-			default: // expense, invoicing, and any service a filter adds with a flat price.
-				amount = price(cfg, svc.key);
-				detail = 'Annual service';
+				return TEXT.accountManager;
+			default: // accounting, expense, invoicing, and any service a filter adds.
+				return TEXT.annual;
 		}
-		return { key: svc.key, label: String(svc.label || svc.key), detail: detail, amount: amount };
-	}
-
-	function amountText(amount, cfg) {
-		return amount === 0 ? TEXT.included : money(amount, cfg);
 	}
 
 	/* ------------------------------------------------------------------ */

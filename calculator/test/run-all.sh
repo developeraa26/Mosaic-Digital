@@ -6,14 +6,19 @@
 # Stages:
 #   1. page      python3 page/build_page.py (writes page/out/page.json, self-checks the form widget,
 #                Zoho mapping and team email) and page/preview.py (hero/overlap/team email screenshots)
-#   2. php       test/php/run.sh: php -l, backend unit tests (pricing, normalize, validation hook,
-#                rate limit, actions_before, new_record, mailer, PDF writer, shortcode, uninstall)
+#   2. php       test/php/run.sh: php -l, backend unit tests (pricing, browser_config without prices,
+#                normalize, validation hook, rate limit, the quote fields on every server path,
+#                new_record, mailer, PDF writer, shortcode output without amounts, uninstall)
 #                plus the sample PDFs (pdftotext, pdfinfo, pdftoppm -r 110, pypdf) and email shots
-#   3. parity    test/ui/parity.test.js: calculator.js vs LP_Calc_Pricing for every price combination
-#   4. ui        test/ui/ui.test.js: Playwright on the real shortcode output + the page.json form
-#                (LP_UI_SHOTS=0 skips the screenshot matrix)
+#   3. no-prices test/ui/no-prices.test.js: the page source (shortcode, config JSON, form), calculator.js
+#                and calculator.css carry no amount, also with an lp_calc_config filter; the browser's
+#                "Your package" lines equal LP_Calc_Pricing::package_lines() for every selection
+#   4. ui        test/ui/ui.test.js: Playwright on the real shortcode output + the page.json form; no
+#                amount anywhere before the result screen, at 1440-320 px (LP_UI_SHOTS=0 skips the
+#                screenshot matrix)
 #   5. e2e       test/e2e/run.sh: php -S with the real plugin, Elementor Pro's submission flow
-#                emulated from page.json, a full submission, tampering, validation, rate limit
+#                emulated from page.json, a full submission with empty figure fields, the server paths
+#                without actions_before, tampering, validation, rate limit
 #
 # Outputs (screenshots, PDFs, e2e state) go to calculator/test/out/ (git-ignored).
 set -u
@@ -49,7 +54,7 @@ stage "page: build_page.py (page.json + self-checks)" python3 "$CALC/page/build_
 stage "page: preview.py (hero, overlap, team email)" python3 "$CALC/page/preview.py"
 stage "php: unit tests, sample PDFs, email checks" bash "$TEST/php/run.sh"
 stage "js: syntax" node --check "$CALC/plugin/ledgerplus-calculator/assets/calculator.js"
-stage "js: parity with LP_Calc_Pricing" node "$TEST/ui/parity.test.js"
+stage "js: no prices in the page + package lines = LP_Calc_Pricing" node "$TEST/ui/no-prices.test.js"
 stage "ui: Playwright on the real shortcode + page.json form" node "$TEST/ui/ui.test.js"
 stage "e2e: php -S + emulated Elementor Pro submission" bash "$TEST/e2e/run.sh"
 

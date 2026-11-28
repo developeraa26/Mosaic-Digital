@@ -72,6 +72,60 @@ function quote( array $raw ) {
 	return LP_Calc_Pricing::compute( $n['selection'] );
 }
 
+/**
+ * Amounts in page text, by the rules of test/ui/amounts.js: "AED", a non-zero default price as
+ * "1,234" or "1234", "Included" as a price label, "extra charge", "free of charge", "per report".
+ * Allowed (counts, not prices): transaction volumes ("1,000 transactions a year", the option values
+ * value="1000" and the config's "value":1000 / "transactions":1000).
+ *
+ * @param string $text Text or markup.
+ * @return array The amounts found.
+ */
+function lp_test_amounts( $text ) {
+	$tx   = LP_Calc_Pricing::TRANSACTIONS;
+	$s    = preg_replace_callback(
+		'/\b\d{1,3}(?:,\d{3})* transactions a year\b/',
+		function ( $m ) use ( $tx ) {
+			return in_array( (int) str_replace( ',', '', $m[0] ), $tx, true ) ? '# transactions a year' : $m[0];
+		},
+		(string) $text
+	);
+	$s    = preg_replace_callback(
+		'/(value=["\']?|"(?:value|transactions)":\s*)(\d+)/',
+		function ( $m ) use ( $tx ) {
+			return in_array( (int) $m[2], $tx, true ) ? $m[1] . '#' : $m[0];
+		},
+		$s
+	);
+	$hits = array();
+	foreach ( array( '/\bAED\b/i', '/\bIncluded\b/', '/extra charge/i', '/free of charge/i', '/\bper report\b/i' ) as $re ) {
+		if ( preg_match( $re, $s, $m ) ) {
+			$hits[] = $m[0];
+		}
+	}
+	foreach ( array_unique( array_filter( LP_Calc_Pricing::default_prices() ) ) as $price ) {
+		foreach ( array( number_format( $price ), (string) $price ) as $needle ) {
+			if ( preg_match( '/(?<![\d.,])' . preg_quote( $needle, '/' ) . '(?![\d]|[.,]\d)/', $s ) ) {
+				$hits[] = $needle;
+			}
+		}
+	}
+	return array_values( array_unique( $hits ) );
+}
+
+/** Every string (keys included) of a nested array. */
+function lp_test_strings( $value, array &$out = array() ) {
+	if ( is_string( $value ) ) {
+		$out[] = $value;
+	} elseif ( is_array( $value ) ) {
+		foreach ( $value as $k => $v ) {
+			$out[] = (string) $k;
+			lp_test_strings( $v, $out );
+		}
+	}
+	return $out;
+}
+
 $_SERVER['REMOTE_ADDR'] = '203.0.113.10';
 add_filter(
 	'lp_calc_logo_path',
@@ -83,25 +137,28 @@ lp_test_reset();
 
 /* ====================================================================== Boot */
 section( 'Boot' );
-check( 'constants defined', defined( 'LP_CALC_VERSION' ) && '1.0.0' === LP_CALC_VERSION && LP_CALC_FILE === realpath( $plugin ) || LP_CALC_FILE === $plugin );
+check( 'constants defined, version 1.1.0', defined( 'LP_CALC_VERSION' ) && '1.1.0' === LP_CALC_VERSION && LP_CALC_FILE === realpath( $plugin ) || LP_CALC_FILE === $plugin );
 check( 'LP_CALC_DIR / LP_CALC_URL', '/' === substr( LP_CALC_DIR, -1 ) && 0 === strpos( LP_CALC_URL, 'https://' ) );
 foreach ( array( 'LP_Calc_Pricing', 'LP_Calc_PDF', 'LP_Calc_Quote_PDF', 'LP_Calc_Mailer', 'LP_Calc_Elementor', 'LP_Calc_Shortcode' ) as $class ) {
 	check( "class $class", class_exists( $class, false ) );
 }
 check( 'validation hook at priority 10, 2 args', array( 10, 2 ) === lp_test_hook_priority( 'elementor_pro/forms/validation', array( 'LP_Calc_Elementor', 'validate' ) ) );
+check( 'process hook (end of process_fields) at priority 10, 2 args', array( 10, 2 ) === lp_test_hook_priority( 'elementor_pro/forms/process', array( 'LP_Calc_Elementor', 'process' ) ) );
 check( 'actions_before filter at priority 10, 2 args', array( 10, 2 ) === lp_test_hook_priority( 'elementor_pro/forms/record/actions_before', array( 'LP_Calc_Elementor', 'actions_before' ) ) );
 check( 'new_record hook at priority 20, 2 args', array( 20, 2 ) === lp_test_hook_priority( 'elementor_pro/forms/new_record', array( 'LP_Calc_Elementor', 'new_record' ) ) );
 require $plugin; // A second load must be a no-op.
 LP_Calc_Elementor::init();
 LP_Calc_Shortcode::init();
-check( 'loading twice / init twice adds no hooks', 1 === lp_test_hook_count( 'elementor_pro/forms/validation' ) && 1 === lp_test_hook_count( 'init' ) );
+check( 'loading twice / init twice adds no hooks', 1 === lp_test_hook_count( 'elementor_pro/forms/validation' ) && 1 === lp_test_hook_count( 'elementor_pro/forms/process' ) && 1 === lp_test_hook_count( 'init' ) );
 do_action( 'init' );
 check( 'shortcode registered on init', isset( $GLOBALS['lp_test']['shortcodes']['lp_package_calculator'] ) );
-check( 'assets registered: version, jquery dependency, footer', '1.0.0' === $GLOBALS['lp_test']['scripts']['lp-calc']['ver'] && array( 'jquery' ) === $GLOBALS['lp_test']['scripts']['lp-calc']['deps'] && true === $GLOBALS['lp_test']['scripts']['lp-calc']['footer'] && '1.0.0' === $GLOBALS['lp_test']['styles']['lp-calc']['ver'] );
+check( 'assets registered: version 1.1.0 (LP_CALC_VERSION), jquery dependency, footer', '1.1.0' === $GLOBALS['lp_test']['scripts']['lp-calc']['ver'] && array( 'jquery' ) === $GLOBALS['lp_test']['scripts']['lp-calc']['deps'] && true === $GLOBALS['lp_test']['scripts']['lp-calc']['footer'] && '1.1.0' === $GLOBALS['lp_test']['styles']['lp-calc']['ver'] );
 $head = file_get_contents( $plugin );
-foreach ( array( 'Plugin Name:       Ledger Plus Package Calculator', 'Version:           1.0.0', 'Requires at least: 6.0', 'Requires PHP:      7.4', 'Text Domain:       ledgerplus-calculator' ) as $h ) {
+foreach ( array( 'Plugin Name:       Ledger Plus Package Calculator', 'Version:           1.1.0', 'Requires at least: 6.0', 'Requires PHP:      7.4', 'Text Domain:       ledgerplus-calculator' ) as $h ) {
 	check( "header: $h", false !== strpos( $head, $h ) );
 }
+$readme = file_get_contents( dirname( $plugin ) . '/readme.txt' );
+check( 'readme.txt: Stable tag 1.1.0 and a 1.1.0 changelog entry', false !== strpos( $readme, "Stable tag: 1.1.0\n" ) && false !== strpos( $readme, "= 1.1.0 =\n* Prices show only after the visitor sends their details; the page no longer contains prices." ) );
 
 /* ====================================================================== Config */
 section( 'Config' );
@@ -118,6 +175,42 @@ check( 'service hints', 'AED 2,000 a year' === $hints['accounting'] && 'AED 500 
 check( 'every service has key, label, hint', count( array_filter( $c['services'], function ( $s ) { return isset( $s['key'], $s['label'], $s['hint'] ) && '' !== $s['label']; } ) ) === 9 );
 check( 'prices', LP_Calc_Pricing::default_prices() === $c['prices'] && 2000 === $c['prices']['accounting'] && 500 === $c['prices']['einvoicing_per_1000'] && 0 === $c['prices']['account_manager'] );
 check( 'config is JSON-encodable', false !== wp_json_encode( $c ) );
+check( 'config() keeps every key of 1.0.0 (the server prices with it)', array( 'currency', 'vat_included', 'vat_rate', 'total_label', 'business_types', 'transactions', 'reports_options', 'employees', 'statuses', 'services', 'prices', 'defaults' ) === array_keys( $c ) );
+check( 'service descriptions state no price', array() === lp_test_amounts( implode( "\n", array_column( $c['services'], 'description' ) ) ) && 'One point of contact for your account.' === $c['services'][8]['description'], json_encode( array_column( $c['services'], 'description' ) ) );
+
+/* ====================================================================== browser_config() */
+section( 'browser_config(): what the page gets, without prices' );
+$b = LP_Calc_Pricing::browser_config();
+check( 'keys: choices, labels, defaults, total label only', array( 'business_types', 'transactions', 'reports_options', 'employees', 'statuses', 'services', 'defaults', 'total_label' ) === array_keys( $b ), implode( ',', array_keys( $b ) ) );
+$bs = lp_test_strings( $b );
+check( 'no prices, currency, vat_rate, vat_included or hint key anywhere', array() === array_intersect( array( 'prices', 'currency', 'vat_rate', 'vat_included', 'hint' ), $bs ) );
+check( 'no amount in any string (transaction counts allowed)', array() === lp_test_amounts( implode( "\n", $bs ) . "\n" . wp_json_encode( $b ) ), json_encode( lp_test_amounts( implode( "\n", $bs ) . wp_json_encode( $b ) ) ) );
+check( 'same choices and labels as config()', $c['business_types'] === $b['business_types'] && $c['transactions'] === $b['transactions'] && $c['reports_options'] === $b['reports_options'] && $c['employees'] === $b['employees'] && $c['statuses'] === $b['statuses'] && $c['defaults'] === $b['defaults'] && $c['total_label'] === $b['total_label'] );
+check( 'services: key, label, description of config(), no hint', array_map( function ( $x ) { return array( 'key' => $x['key'], 'label' => $x['label'], 'description' => $x['description'] ); }, $c['services'] ) === $b['services'] );
+add_filter( 'lp_calc_config', $pricey = function ( $cfg ) {
+	$cfg['prices']['accounting']        = 2150;
+	$cfg['services'][0]['hint']        = 'AED 2,150 a year';
+	$cfg['services'][0]['description'] = 'Bookkeeping all year for AED 2,150.';
+	$cfg['services'][8]['description'] = 'One point of contact, at no extra charge.';
+	$cfg['services'][1]['label']       = 'Financial reports';
+	$cfg['price_list']                 = array( 'accounting' => 2150 );
+	$cfg['defaults']['note']           = 'AED 650 per 1,000 transactions';
+	return $cfg;
+} );
+$bf = LP_Calc_Pricing::browser_config();
+$cf = LP_Calc_Pricing::config();
+remove_filter( 'lp_calc_config', $pricey );
+check( 'lp_calc_config filter applies first (labels follow it)', 'Financial reports' === $bf['services'][1]['label'] && 2150 === $cf['prices']['accounting'] );
+check( 'filtered: a description that states a price is left out', ! isset( $bf['services'][0]['description'] ) && ! isset( $bf['services'][8]['description'] ) && isset( $bf['services'][2]['description'] ) );
+check( 'filtered: unknown keys (price_list, defaults.note) are not copied', ! isset( $bf['price_list'] ) && ! isset( $bf['defaults']['note'] ) );
+$bfs = implode( "\n", lp_test_strings( $bf ) ) . wp_json_encode( $bf );
+check( 'filtered: no amount and no filtered price', array() === lp_test_amounts( $bfs ) && false === strpos( $bfs, '2150' ) && false === strpos( $bfs, '2,150' ) && false === strpos( $bfs, '650' ) );
+check( 'mentions_price(): AED, extra charge; not scope words', LP_Calc_Pricing::mentions_price( 'From aed 500' ) && LP_Calc_Pricing::mentions_price( 'at no extra charge' ) && ! LP_Calc_Pricing::mentions_price( 'Registration included if you are not registered.' ) && ! LP_Calc_Pricing::mentions_price( 'Daedalus Trading' ) );
+
+$pk = LP_Calc_Pricing::package_lines( LP_Calc_Pricing::normalize( array( 'business' => 'Trading / Wholesale', 'transactions' => '1000', 'vat_status' => 'registered', 'ct_status' => 'not_registered', 'employees' => 'up_to_20', 'services' => 'accounting,vat,ct,payroll' ) )['selection'] );
+check( 'package_lines(): Excel example', array( array( 'key' => 'accounting', 'label' => 'Accounting and bookkeeping', 'detail' => 'Annual service' ), array( 'key' => 'vat', 'label' => 'VAT returns filing and compliance', 'detail' => 'Already VAT registered' ), array( 'key' => 'ct', 'label' => 'Corporate Tax registration and filing', 'detail' => 'Includes Corporate Tax registration' ), array( 'key' => 'payroll', 'label' => 'Payroll and WPS support', 'detail' => 'Up to 20 employees' ) ) === $pk, json_encode( $pk ) );
+$pk = LP_Calc_Pricing::package_lines( array( 'services' => array( 'reports', 'vat', 'ct', 'payroll', 'einvoicing', 'account_manager' ), 'reports' => 1, 'vat_status' => 'not_registered', 'ct_status' => 'registered', 'employees' => 'over_20', 'transactions' => 20000 ) );
+check( 'package_lines(): details without prices', array( '1 report a year', 'Includes VAT registration', 'Already registered for Corporate Tax', 'More than 20 employees', '20,000 transactions a year', 'One point of contact' ) === array_column( $pk, 'detail' ), json_encode( array_column( $pk, 'detail' ) ) );
 
 /* ====================================================================== Pricing rules */
 section( 'Pricing rules' );
@@ -166,8 +259,9 @@ check( 'maximum: 9 lines, total AED 37,000', 9 === count( $qm['lines'] ) && 3700
 check( 'maximum line amounts', array( 2000, 2000, 2500, 2000, 2000, 500, 1000, 25000, 0 ) === array_column( $qm['lines'], 'amount' ) );
 
 // Every combination of the inputs that affect price, against an independent formula.
-$combos = 0;
-$bad    = 0;
+$combos  = 0;
+$bad     = 0;
+$bad_pkg = 0;
 for ( $mask = 1; $mask < 512; $mask++ ) {
 	$keys = array();
 	foreach ( LP_Calc_Pricing::SERVICE_KEYS as $i => $k ) {
@@ -192,9 +286,13 @@ for ( $mask = 1; $mask < 512; $mask++ ) {
 						$n = LP_Calc_Pricing::normalize( array( 'business' => 'Retail', 'transactions' => (string) $tx, 'vat_status' => $vat, 'ct_status' => $ct, 'employees' => $emp, 'reports' => (string) $rep, 'services' => implode( ',', $keys ) ) );
 						$got = LP_Calc_Pricing::compute( $n['selection'] );
 						$sum = array_sum( array_column( $got['lines'], 'amount' ) );
+						$pkg = LP_Calc_Pricing::package_lines( $n['selection'] );
 						$combos++;
 						if ( $n['errors'] || $got['total'] !== $expect || $sum !== $got['total'] || count( $got['lines'] ) !== count( $keys ) ) {
 							$bad++;
+						}
+						if ( array_column( $pkg, 'key' ) !== array_column( $got['lines'], 'key' ) || array() !== lp_test_amounts( implode( "\n", array_column( $pkg, 'detail' ) ) ) ) {
+							$bad_pkg++;
 						}
 					}
 				}
@@ -203,6 +301,7 @@ for ( $mask = 1; $mask < 512; $mask++ ) {
 	}
 }
 check( "all $combos price combinations match the rules", 0 === $bad, "$bad wrong" );
+check( "all $combos: package_lines() lists the quote's services in order, without an amount", 0 === $bad_pkg, "$bad_pkg wrong" );
 
 check( 'money()', 'AED 7,000' === LP_Calc_Pricing::money( 7000 ) && 'AED 0' === LP_Calc_Pricing::money( 0 ) && 'AED 37,000' === LP_Calc_Pricing::money( 37000 ) && 'AED 500' === LP_Calc_Pricing::money( 500 ) );
 
@@ -487,6 +586,78 @@ $handler = new ElementorPro\Modules\Forms\Classes\Ajax_Handler();
 $r       = $handler->ajax_send_form( $form_without, lp_test_post(), lp_test_actions() );
 check( 'a missing hidden field is skipped (update_field needs the field)', true === $r['success'] && ! isset( $r['record']->get( 'fields' )['quote_summary'] ) && 'AED 7,000' === $r['record']->get( 'fields' )['quote_total']['value'] );
 
+/* ====================================================================== Every server path */
+section( 'Quote fields on every server path (the page sends them empty)' );
+$empty      = array( 'quote_ref' => '', 'quote_total' => '', 'quote_summary' => '' );
+$figures_ok = function ( $r, $label, $expect_actions = true ) {
+	$f    = $r['record']->get( 'fields' );
+	$ref  = $f['quote_ref']['value'];
+	$sum  = $f['quote_summary']['value'];
+	$q    = $r['data']['data']['lp_quote'] ?? array();
+	$mail = $GLOBALS['lp_test']['mails'][0] ?? array( 'subject' => '', 'attachments' => array() );
+	check( "$label: record has the server ref, total and summary", 1 === preg_match( '/^LPQ-\d{6}-[0-9A-F]{5}$/', $ref ) && 'AED 7,000' === $f['quote_total']['value'] && 0 === strpos( $sum, "Quote $ref\n" ) && false !== strpos( $sum, 'Estimated annual total (incl. 5% VAT): AED 7,000' ), json_encode( array( $ref, $f['quote_total']['value'] ) ) );
+	check( "$label: lp_quote has the ref, lines and total", $ref === ( $q['ref'] ?? '' ) && 'AED 7,000' === ( $q['total'] ?? '' ) && 4 === count( $q['lines'] ?? array() ) && 'AED 2,000' === $q['lines'][0]['amount'] );
+	check( "$label: client email and PDF carry the ref and the figures", "Your Ledger Plus package estimate ($ref)" === $mail['subject'] && false !== strpos( $mail['message'] ?? '', 'AED 7,000' ) && isset( $mail['attachments'][0] ) && "Ledger-Plus-Quotation-$ref.pdf" === $mail['attachments'][0]['name'] );
+	if ( $expect_actions ) {
+		$lead = $GLOBALS['lp_test']['zoho'][0] ?? array( 'Description' => '' );
+		$team = $GLOBALS['lp_test']['team_email'][0] ?? array( 'subject' => '', 'content' => '' );
+		$save = $GLOBALS['lp_test']['saved'][0] ?? array();
+		check( "$label: Zoho Description, team email and saved entry have the figures", false !== strpos( $lead['Description'], "Package calculator estimate:\nQuote $ref\n" ) && false !== strpos( $lead['Description'], '- Accounting and bookkeeping: AED 2,000' ) && "Package calculator lead: Test Trading LLC ($ref)" === $team['subject'] && false !== strpos( $team['content'], 'AED 7,000' ) && $ref === ( $save['quote_ref'] ?? '' ) && 'AED 7,000' === ( $save['quote_total'] ?? '' ) );
+	}
+	return $ref;
+};
+
+// a) The normal path: process() writes the fields, actions_before() writes them again, same ref.
+lp_test_reset();
+$at_process = array();
+add_action( 'elementor_pro/forms/process', $spy = function ( $record ) use ( &$at_process ) {
+	$f          = $record->get( 'fields' );
+	$at_process = array( $f['quote_ref']['value'], $f['quote_total']['value'] );
+}, 11, 1 );
+$r = lp_test_submit( $empty );
+remove_action( 'elementor_pro/forms/process', $spy, 11 );
+check( 'normal path: the browser posted the figure fields empty', '' === lp_test_post( $empty )['quote_total'] && '' === lp_test_post( $empty )['quote_summary'] && '' === lp_test_post( $empty )['quote_ref'] );
+$ref = $figures_ok( $r, 'normal path' );
+check( 'normal path: written already at elementor_pro/forms/process, the same ref kept by actions_before', $ref === $at_process[0] && 'AED 7,000' === $at_process[1], json_encode( $at_process ) );
+check( 'normal path: nothing logged', '' === trim( file_get_contents( LP_TEST_LOG ) ), file_get_contents( LP_TEST_LOG ) );
+
+// b) actions_before does not run (filter removed): process() has written the fields before the actions.
+lp_test_reset();
+remove_filter( 'elementor_pro/forms/record/actions_before', array( 'LP_Calc_Elementor', 'actions_before' ) );
+$r = lp_test_submit( $empty );
+add_filter( 'elementor_pro/forms/record/actions_before', array( 'LP_Calc_Elementor', 'actions_before' ), 10, 2 );
+$figures_ok( $r, 'without actions_before' );
+check( 'without actions_before: nothing logged', '' === trim( file_get_contents( LP_TEST_LOG ) ), file_get_contents( LP_TEST_LOG ) );
+
+// c) process does not run (an Elementor Pro without the hook): actions_before() writes them.
+lp_test_reset();
+remove_action( 'elementor_pro/forms/process', array( 'LP_Calc_Elementor', 'process' ) );
+$r = lp_test_submit( $empty );
+add_action( 'elementor_pro/forms/process', array( 'LP_Calc_Elementor', 'process' ), 10, 2 );
+$figures_ok( $r, 'without the process hook' );
+
+// d) Neither ran: new_record() rebuilds the quote (state_from_record) with a server ref (a posted ref
+// is never used), writes the fields into the record and logs that the actions ran without them.
+lp_test_reset();
+remove_filter( 'elementor_pro/forms/record/actions_before', array( 'LP_Calc_Elementor', 'actions_before' ) );
+remove_action( 'elementor_pro/forms/process', array( 'LP_Calc_Elementor', 'process' ) );
+$r = lp_test_submit( array( 'quote_ref' => 'LPQ-000000-00000', 'quote_total' => '', 'quote_summary' => '' ) );
+add_filter( 'elementor_pro/forms/record/actions_before', array( 'LP_Calc_Elementor', 'actions_before' ), 10, 2 );
+add_action( 'elementor_pro/forms/process', array( 'LP_Calc_Elementor', 'process' ), 10, 2 );
+$ref = $figures_ok( $r, 'state_from_record', false );
+check( 'state_from_record: a posted quote_ref is not used', 'LPQ-000000-00000' !== $ref );
+check( 'state_from_record: logged without personal data', false !== strpos( file_get_contents( LP_TEST_LOG ), "[lp-calc] quote fields written after the form actions for $ref" ) && false === strpos( file_get_contents( LP_TEST_LOG ), '@' ) );
+check( 'state_from_record: the actions ran before the figures existed (why process() is hooked too)', false === strpos( $GLOBALS['lp_test']['zoho'][0]['Description'], 'AED' ) );
+
+// e) Tampered figure fields are overwritten on the path without actions_before too.
+lp_test_reset();
+remove_filter( 'elementor_pro/forms/record/actions_before', array( 'LP_Calc_Elementor', 'actions_before' ) );
+$r = lp_test_submit( array( 'quote_ref' => 'LPQ-000000-00000', 'quote_total' => 'AED 1', 'quote_summary' => 'Tampered', 'field_lead_form' => 'Other', 'lead_source' => 'Spam' ) );
+add_filter( 'elementor_pro/forms/record/actions_before', array( 'LP_Calc_Elementor', 'actions_before' ), 10, 2 );
+$ref = $figures_ok( $r, 'tampered, without actions_before' );
+check( 'tampered, without actions_before: lead form and source forced, nothing tampered reaches Zoho', 'Ledgerplus Package Calculator' === $GLOBALS['lp_test']['zoho'][0]['Lead_Form'] && 'Website' === $GLOBALS['lp_test']['zoho'][0]['Lead_Source'] && false === strpos( $GLOBALS['lp_test']['zoho'][0]['Description'], 'Tampered' ) && 'LPQ-000000-00000' !== $ref );
+check( 'state cleared after each request', null === LP_Calc_Elementor::state() );
+
 /* ====================================================================== new_record */
 section( 'new_record: PDF, client email, response data' );
 lp_test_reset();
@@ -656,7 +827,7 @@ function __return_false_lp() {
 $r = lp_test_submit();
 remove_all_filters( 'lp_calc_is_calculator_form' );
 check( 'lp_calc_is_calculator_form can opt the form out', true === $r['success'] && ! isset( $r['data']['data']['lp_quote'] ) && array() === $GLOBALS['lp_test']['mails'] );
-check( 'hooks ignore non-record arguments', null === LP_Calc_Elementor::validate( null, null ) && 'x' === LP_Calc_Elementor::actions_before( 'x', null ) && null === LP_Calc_Elementor::new_record( new stdClass(), null ) );
+check( 'hooks ignore non-record arguments', null === LP_Calc_Elementor::validate( null, null ) && null === LP_Calc_Elementor::process( null, null ) && 'x' === LP_Calc_Elementor::actions_before( 'x', null ) && null === LP_Calc_Elementor::new_record( new stdClass(), null ) );
 
 /* ====================================================================== PDF writer */
 section( 'PDF writer' );
@@ -719,14 +890,31 @@ $GLOBALS['lp_test']['scripts'] = array();
 $GLOBALS['lp_test']['styles']  = array();
 $GLOBALS['lp_test']['caps']    = array();
 $html                          = LP_Calc_Shortcode::render();
-$template                      = LP_CALC_DIR . 'templates/calculator.php';
 check( 'shortcode enqueues calculator.css and calculator.js', wp_style_is( 'lp-calc' ) && wp_script_is( 'lp-calc' ) && 'https://example.test/wp-content/plugins/ledgerplus-calculator/assets/calculator.js' === $GLOBALS['lp_test']['scripts']['lp-calc']['src'] );
-if ( is_file( $template ) ) {
-	check( 'real template renders the root and the config once', false !== strpos( $html, 'data-lp-calc' ) && 1 === substr_count( $html, 'id="lp-calc-config"' ) );
-} else {
-	check( 'no template yet: empty output', '' === $html );
+check( 'real template renders the root and the config once', false !== strpos( $html, 'data-lp-calc' ) && 1 === substr_count( $html, 'id="lp-calc-config"' ) );
+preg_match( '#<script type="application/json" id="lp-calc-config">(.*?)</script>#s', $html, $cj );
+check( 'the page gets browser_config(), not config()', isset( $cj[1] ) && LP_Calc_Pricing::browser_config() === json_decode( $cj[1], true ) );
+check( 'shortcode output (markup + config JSON): no amount', array() === lp_test_amounts( $html ), json_encode( lp_test_amounts( $html ) ) );
+check( 'shortcode output: no aria-live, no total, no estimate box, no phone bar, no price hint', false === strpos( $html, 'aria-live' ) && false === strpos( $html, 'data-lp-calc-total' ) && false === strpos( $html, 'lp-calc__estimate' ) && false === strpos( $html, 'lp-calc__bar' ) && false === strpos( $html, 'lp-calc__service-price' ) );
+check( 'shortcode output: step 2 hint and step 4 intro without amounts', false !== strpos( $html, 'We use this to price your UAE e-invoicing.' ) && false !== strpos( $html, '>Select one or more services.</p>' ) && false === strpos( $html, 'Your estimate updates' ) );
+check( 'shortcode output: step 5 "Your package" with the default selection, intro and PDF note', false !== strpos( $html, '<span class="lp-calc__line-label">UAE e-invoicing</span><span class="lp-calc__line-detail">1,000 transactions a year</span>' ) && false !== strpos( $html, 'Leave your details to see your price.' ) && false !== strpos( $html, 'We&#039;ll also email your quotation to you as a PDF.' ) );
+preg_match_all( '/\b(?:aria-controls|aria-describedby|aria-labelledby|for)="([^"]+)"/', $html, $refs );
+preg_match_all( '/\bid="([^"]+)"/', $html, $ids );
+$dangling = array();
+foreach ( $refs[1] as $list ) {
+	foreach ( preg_split( '/\s+/', $list ) as $rid ) {
+		if ( '' !== $rid && ! in_array( $rid, $ids[1], true ) ) {
+			$dangling[] = $rid;
+		}
+	}
 }
-$script = LP_Calc_Shortcode::config_script( LP_Calc_Pricing::config() );
+check( 'shortcode output: every aria-controls, aria-describedby, aria-labelledby and for points at an id', array() === $dangling, implode( ',', $dangling ) );
+add_filter( 'lp_calc_config', $pricey );
+$GLOBALS['lp_test']['scripts'] = array();
+$fhtml                         = LP_Calc_Shortcode::render();
+remove_filter( 'lp_calc_config', $pricey );
+check( 'shortcode output with prices added by a filter: no amount, no filtered price', array() === lp_test_amounts( $fhtml ) && false === strpos( $fhtml, '2150' ) && false === strpos( $fhtml, '2,150' ), json_encode( lp_test_amounts( $fhtml ) ) );
+$script = LP_Calc_Shortcode::config_script( LP_Calc_Pricing::browser_config() );
 check( 'config script: application/json, id, valid JSON, no "</"', 1 === preg_match( '#^<script type="application/json" id="lp-calc-config">(.*)</script>$#s', $script, $js ) && is_array( json_decode( $js[1], true ) ) && false === strpos( $js[1], '</' ) );
 $GLOBALS['lp_test']['scripts'] = array();
 $GLOBALS['lp_test']['singular'] = true;

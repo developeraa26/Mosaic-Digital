@@ -235,69 +235,6 @@ body:not(.elementor-editor-active) .lp-calc .elementor-widget.lp-calc-form {
 	display: block;
 }
 
-/* Live estimate */
-
-.lp-calc__estimate {
-	padding: 22px 20px 16px;
-	border-radius: var(--lp-radius);
-	background: linear-gradient(160deg, var(--lp-navy) 0%, var(--lp-navy-2) 100%);
-	box-shadow: var(--lp-shadow);
-	color: #fff;
-}
-
-.lp-calc__estimate-label {
-	color: var(--lp-accent);
-	font-size: 12px;
-	font-weight: 700;
-	letter-spacing: 0.12em;
-	line-height: 1.4;
-	text-transform: uppercase;
-}
-
-.lp-calc__estimate-total {
-	margin: 6px 0 2px;
-	color: #fff;
-	font-size: 32px;
-	font-weight: 700;
-	letter-spacing: -0.02em;
-	line-height: 1.15;
-	font-variant-numeric: tabular-nums;
-}
-
-.lp-calc__estimate-note {
-	color: rgba(255, 255, 255, 0.74);
-	font-size: 13px;
-	line-height: 1.4;
-}
-
-.lp-calc__lines--rail {
-	margin-top: 14px;
-	border-top: 1px solid rgba(255, 255, 255, 0.14);
-}
-
-.lp-calc__lines--rail .lp-calc__line {
-	padding: 9px 0;
-	border-bottom: 1px solid rgba(255, 255, 255, 0.09);
-	font-size: 13.5px;
-}
-
-.lp-calc__lines--rail .lp-calc__line:last-child {
-	border-bottom: 0;
-}
-
-.lp-calc__lines--rail .lp-calc__line-label {
-	color: rgba(255, 255, 255, 0.86);
-	font-weight: 500;
-}
-
-.lp-calc__lines--rail .lp-calc__line-amount {
-	color: #fff;
-}
-
-.lp-calc__lines--rail .lp-calc__line--empty {
-	color: rgba(255, 255, 255, 0.74);
-}
-
 /* Help */
 
 .lp-calc__help {
@@ -766,18 +703,6 @@ body:not(.elementor-editor-active) .lp-calc .elementor-widget.lp-calc-form {
 	line-height: 1.5;
 }
 
-.lp-calc__service-price {
-	display: inline-block;
-	margin-top: 10px;
-	padding: 3px 10px;
-	border-radius: 99px;
-	background: var(--lp-blue-soft);
-	color: #0c4fbb;
-	font-size: 13px;
-	font-weight: 700;
-	line-height: 1.5;
-}
-
 .lp-calc__extra {
 	margin: 0 16px 16px 52px;
 	padding-top: 14px;
@@ -848,7 +773,7 @@ body:not(.elementor-editor-active) .lp-calc .elementor-widget.lp-calc-form {
 	font-size: 15px;
 }
 
-/* Lines (estimate, summary, bar) */
+/* Lines (step 5 package, result) */
 
 .lp-calc__line {
 	display: flex;
@@ -981,14 +906,54 @@ body:not(.elementor-editor-active) .lp-calc .elementor-widget.lp-calc-form {
 	background: var(--lp-soft);
 }
 
-.lp-calc__summary-title,
-.lp-calc__bar-heading {
+.lp-calc__summary-title {
 	color: var(--lp-muted);
 	font-size: 12px;
 	font-weight: 700;
 	letter-spacing: 0.12em;
 	line-height: 1.4;
 	text-transform: uppercase;
+}
+
+.lp-calc__lines--package {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 12px 24px;
+	margin-top: 12px;
+}
+
+.lp-calc__lines--package .lp-calc__line {
+	justify-content: flex-start;
+	align-items: flex-start;
+	gap: 10px;
+	min-width: 0;
+}
+
+/* A check mark before each service (decoration only: a CSS background, not read out). */
+.lp-calc__lines--package .lp-calc__line:not(.lp-calc__line--empty)::before {
+	content: "";
+	flex: none;
+	width: 20px;
+	height: 20px;
+	margin-top: 1px;
+	border-radius: 50%;
+	background: var(--lp-blue-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath d='M4.5 10.5l3.5 3.5 7.5-8' fill='none' stroke='%230f5cd8' stroke-width='2.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center / 12px 12px no-repeat;
+}
+
+.lp-calc__lines--package .lp-calc__line--empty {
+	grid-column: 1 / -1;
+	color: var(--lp-muted);
+}
+
+.lp-calc__lines--package .lp-calc__line-label {
+	color: var(--lp-ink);
+	font-size: 15px;
+	line-height: 1.35;
+}
+
+.lp-calc__lines--package .lp-calc__line-detail {
+	color: var(--lp-muted);
+	font-size: 13.5px;
 }
 
 .lp-calc__lines--summary {
@@ -1039,16 +1004,33 @@ body:not(.elementor-editor-active) .lp-calc .elementor-widget.lp-calc-form {
 }
 
 .lp-calc__summary-total--strong {
+	flex-wrap: wrap;
 	align-items: center;
-	margin-top: 14px;
+	gap: 4px 16px;
+	margin: 10px 0 4px;
 	padding: 16px 18px;
 	border-radius: 12px;
 	background: var(--lp-navy);
 	color: #fff;
 }
 
+.lp-calc__summary-total-label {
+	min-width: 0;
+}
+
 .lp-calc__summary-total--strong strong {
 	color: #fff;
+	font-size: 26px;
+}
+
+/* Result: the server's total sits above its lines; the last line needs no rule under it. */
+.lp-calc__summary--result .lp-calc__lines--summary .lp-calc__line:last-child {
+	padding-bottom: 2px;
+	border-bottom: 0;
+}
+
+.lp-calc__summary--result .lp-calc__lines--package {
+	margin-bottom: 4px;
 }
 
 .lp-calc__pdf-note {
@@ -1154,135 +1136,6 @@ body:not(.elementor-editor-active) .lp-calc .elementor-widget.lp-calc-form {
 }
 
 /* ------------------------------------------------------------------ */
-/* Mobile estimate bar (shown at 850px and narrower)                   */
-/* ------------------------------------------------------------------ */
-
-.lp-calc__bar {
-	display: none;
-}
-
-.lp-calc__bar-row {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 12px;
-	min-height: 66px;
-	padding: 10px 12px 10px 20px;
-	cursor: pointer;
-}
-
-.lp-calc__bar-sum {
-	display: flex;
-	flex-direction: column;
-	min-width: 0;
-	line-height: 1.2;
-}
-
-.lp-calc__bar-label {
-	color: var(--lp-accent);
-	font-size: 12px;
-	font-weight: 700;
-	letter-spacing: 0.1em;
-	text-transform: uppercase;
-}
-
-.lp-calc__bar-total {
-	margin-top: 3px;
-	color: #fff;
-	font-size: 21px;
-	font-weight: 700;
-	letter-spacing: -0.01em;
-	font-variant-numeric: tabular-nums;
-	white-space: nowrap;
-}
-
-.lp-calc button.lp-calc__bar-toggle,
-.lp-calc button.lp-calc__bar-toggle:hover,
-.lp-calc button.lp-calc__bar-toggle:focus {
-	display: inline-flex;
-	align-items: center;
-	gap: 6px;
-	flex: none;
-	min-height: 44px;
-	margin: 0;
-	padding: 0 12px 0 14px;
-	border: 1px solid rgba(255, 255, 255, 0.24);
-	border-radius: var(--lp-radius-input);
-	background: rgba(255, 255, 255, 0.1);
-	box-shadow: none;
-	color: #fff;
-	cursor: pointer;
-	font-family: var(--lp-font);
-	font-size: 14px;
-	font-weight: 600;
-	line-height: 1;
-	text-transform: none;
-	white-space: nowrap;
-}
-
-.lp-calc button.lp-calc__bar-toggle:hover {
-	background: rgba(255, 255, 255, 0.18);
-}
-
-.lp-calc button.lp-calc__bar-toggle:focus-visible {
-	outline: 3px solid var(--lp-accent);
-	outline-offset: 2px;
-}
-
-.lp-calc__chev {
-	transition: transform 0.2s;
-}
-
-.lp-calc.is-bar-open .lp-calc__chev {
-	transform: rotate(180deg);
-}
-
-.lp-calc__bar-panel {
-	max-height: min(55vh, 420px);
-	overflow-y: auto;
-	padding: 16px 20px 8px;
-	border-bottom: 1px solid rgba(255, 255, 255, 0.14);
-	overscroll-behavior: contain;
-}
-
-.lp-calc__bar-heading {
-	color: var(--lp-accent);
-}
-
-.lp-calc__lines--bar {
-	margin-top: 4px;
-}
-
-.lp-calc__lines--bar .lp-calc__line {
-	padding: 9px 0;
-	border-bottom: 1px solid rgba(255, 255, 255, 0.09);
-	font-size: 14.5px;
-}
-
-.lp-calc__lines--bar .lp-calc__line-label {
-	color: #fff;
-}
-
-.lp-calc__lines--bar .lp-calc__line-detail {
-	color: rgba(255, 255, 255, 0.7);
-	font-size: 13px;
-}
-
-.lp-calc__lines--bar .lp-calc__line-amount {
-	color: #fff;
-}
-
-.lp-calc__lines--bar .lp-calc__line--empty {
-	color: rgba(255, 255, 255, 0.8);
-}
-
-.lp-calc__bar-note {
-	padding: 10px 0 6px;
-	color: rgba(255, 255, 255, 0.7);
-	font-size: 13px;
-}
-
-/* ------------------------------------------------------------------ */
 /* Responsive                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -1303,10 +1156,6 @@ body:not(.elementor-editor-active) .lp-calc .elementor-widget.lp-calc-form {
 	.lp-calc__card > .lp-calc__notice--editor {
 		margin: 16px 28px 0;
 	}
-
-	.lp-calc__estimate-total {
-		font-size: 28px;
-	}
 }
 
 @media (max-height: 720px) {
@@ -1326,18 +1175,16 @@ body:not(.elementor-editor-active) .lp-calc .elementor-widget.lp-calc-form {
 	}
 
 	.lp-calc__rail-sticky {
+		position: static;
+	}
+
+	/* The rail turns into the step dots above the card; the help box moves below the card. */
+	.lp-calc__help--rail {
 		display: none;
 	}
 
-	/* The estimate moves into the card (sticky bar); the help box moves below the card. */
 	.lp-calc__help--below {
 		display: block;
-	}
-
-	/* Keyboard focus and scrolled-to messages stay clear of the sticky estimate bar. */
-	.lp-calc__body :where(a, button, input, select, textarea, [tabindex]),
-	.lp-calc__body .elementor-message {
-		scroll-margin-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
 	}
 
 	.lp-calc__rail-card {
@@ -1404,23 +1251,6 @@ body:not(.elementor-editor-active) .lp-calc .elementor-widget.lp-calc-form {
 
 	.lp-calc__card {
 		min-height: 0;
-	}
-
-	.lp-calc__bar {
-		position: sticky;
-		bottom: 0;
-		z-index: 20;
-		display: block;
-		margin: 0 -1px -1px;
-		border-radius: 0 0 var(--lp-radius) var(--lp-radius);
-		background: var(--lp-navy);
-		box-shadow: 0 -8px 24px rgba(4, 25, 80, 0.16);
-		color: #fff;
-		padding-bottom: env(safe-area-inset-bottom, 0px);
-	}
-
-	.lp-calc.is-complete .lp-calc__bar {
-		display: none;
 	}
 }
 
@@ -1497,8 +1327,13 @@ body:not(.elementor-editor-active) .lp-calc .elementor-widget.lp-calc-form {
 		padding: 14px 16px;
 	}
 
-	.lp-calc__bar-row {
-		padding-left: 18px;
+	.lp-calc__summary-total--strong strong {
+		font-size: 24px;
+	}
+
+	.lp-calc__lines--package {
+		grid-template-columns: minmax(0, 1fr);
+		gap: 10px;
 	}
 }
 
@@ -1517,14 +1352,6 @@ body:not(.elementor-editor-active) .lp-calc .elementor-widget.lp-calc-form {
 
 	.lp-calc__step {
 		font-size: 11.5px;
-	}
-
-	.lp-calc__bar-row {
-		padding-left: 14px;
-	}
-
-	.lp-calc__bar-total {
-		font-size: 19px;
 	}
 }
 

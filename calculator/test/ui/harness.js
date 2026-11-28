@@ -192,8 +192,10 @@ const TYPES = { '.css': 'text/css', '.js': 'application/javascript', '.woff2': '
 
 /**
  * Serve the harness on the page. Returns a control object for the fake admin-ajax endpoint.
- * ctl.mode: 'ok' | 'server-error' | 'no-quote' | 'email-failed' | 'emailed-error' (a later action such as
- * Zoho failed after the client email went out) | 'rate-limited' (form-level message only); ctl.posts: posted bodies.
+ * ctl.mode: 'ok' | 'server-error' | 'no-quote' (success without lp_quote) | 'no-lines' (lp_quote without
+ * lines) | 'email-failed' (email_sent false, as past the site-wide cap) | 'emailed-error' (a later action
+ * such as Zoho failed after the client email went out) | 'rate-limited' (form-level message only);
+ * ctl.posts: posted bodies.
  */
 async function serve(page, opts) {
 	opts = opts || {};
@@ -224,7 +226,7 @@ async function serve(page, opts) {
 				const limit = 'You have requested several quotations already. Please try again later or email info@ledgerplus.ae.';
 				body = { success: false, data: { message: limit, errors: { lpc_version: limit }, data: [] } };
 			} else {
-				const oracle = JSON.parse(php([path.join(UI, 'quote-oracle.php')], JSON.stringify({ mode: 'quote', fields: ff }), { LP_CALC_CONFIG: 'real' }));
+				const oracle = JSON.parse(php([path.join(UI, 'quote-oracle.php')], JSON.stringify({ mode: 'quote', fields: ff }), {}));
 				ctl.quotes.push(oracle);
 				if (!oracle.success) {
 					body = { success: false, data: { message: Object.values(oracle.errors).join(' '), errors: [], data: [] } };
@@ -232,6 +234,9 @@ async function serve(page, opts) {
 					const q = oracle.lp_quote;
 					if (ctl.mode === 'email-failed') {
 						q.email_sent = false;
+					}
+					if (ctl.mode === 'no-lines') {
+						q.lines = [];
 					}
 					if (ctl.mode === 'emailed-error') {
 						body = { success: false, data: { message: 'Something went wrong. Please try again, or email info@ledgerplus.ae.', errors: [], data: { lp_quote: q } } };

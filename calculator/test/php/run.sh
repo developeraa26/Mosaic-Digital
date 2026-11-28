@@ -22,7 +22,7 @@ echo "== Sample PDFs and emails (pdftotext, pdfinfo, pdftoppm -r 110) =="
 php make-samples.php "$OUT" || rc=1
 
 echo
-echo "== compute-cli (JS parity helper) =="
+echo "== compute-cli (server pricing from the command line) =="
 res=$(echo '[{"business":"Trading / Wholesale","transactions":"1000","vat_status":"registered","ct_status":"not_registered","employees":"up_to_20","services":"accounting,vat,ct,payroll"}]' | php compute-cli.php)
 echo "$res" | grep -q '"total":7000' && echo "  PASS  Excel example via compute-cli = 7000" || { echo "  FAIL  compute-cli: $res"; rc=1; }
 

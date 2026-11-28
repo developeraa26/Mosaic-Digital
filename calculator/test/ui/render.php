@@ -2,16 +2,17 @@
 /**
  * Renders the page parts the UI harness needs, from the REAL plugin:
  *   - the [lp_package_calculator] shortcode output (LP_Calc_Shortcode via do_shortcode, so the real
- *     LP_Calc_Pricing::config() and templates/calculator.php),
+ *     LP_Calc_Pricing::browser_config() and templates/calculator.php),
  *   - the assets the plugin enqueued (URL, version, dependencies, footer),
  *   - the Elementor Pro form widget built from page/out/page.json.
  *
- * php render.php [--editor] [--json] [--config-json] [--query=utm_source=x&...]
- *   (default)      print the shortcode markup
- *   --editor       current user can edit_posts (editors-only notices)
- *   --json         print {shortcode, form, form_id, assets, early, head, footer, notices} as JSON
- *   --config-json  print the config JSON (LP_CALC_CONFIG=stub prints the spec-shaped stub instead,
- *                  for the JS parity test of the plain-list config shape)
+ * php render.php [--editor] [--json] [--config-json] [--price-filter] [--query=utm_source=x&...]
+ *   (default)       print the shortcode markup
+ *   --editor        current user can edit_posts (editors-only notices)
+ *   --json          print {shortcode, form, form_id, assets, early, head, footer, notices} as JSON
+ *   --config-json   print the config the page gets (LP_Calc_Pricing::browser_config())
+ *   --price-filter  an lp_calc_config filter changes the prices and hints, puts a price into a
+ *                   service description and adds an unknown key, as a site owner might
  */
 require_once dirname( __DIR__ ) . '/wp/env.php';
 require_once dirname( __DIR__ ) . '/wp/elementor-form.php';
@@ -27,14 +28,24 @@ foreach ( $args as $a ) {
 
 lp_env_boot( array( 'editor' => $editor ) );
 
+if ( in_array( '--price-filter', $args, true ) ) {
+	add_filter(
+		'lp_calc_config',
+		static function ( $config ) {
+			$config['prices']['accounting']          = 2150;
+			$config['prices']['einvoicing_per_1000'] = 650;
+			$config['services'][0]['hint']          = 'AED 2,150 a year';
+			$config['services'][0]['description']   = 'Bookkeeping all year for AED 2,150.';
+			$config['services'][8]['description']   = 'One point of contact, at no extra charge.';
+			$config['price_list']                   = array( 'accounting' => 'AED 2,150' );
+			$config['defaults']['note']             = 'AED 650 per 1,000 transactions';
+			return $config;
+		}
+	);
+}
+
 if ( in_array( '--config-json', $args, true ) ) {
-	if ( 'stub' === getenv( 'LP_CALC_CONFIG' ) ) {
-		require_once __DIR__ . '/stub-config.php';
-		$config = lp_calc_ui_stub_config();
-	} else {
-		$config = LP_Calc_Pricing::config();
-	}
-	echo json_encode( $config, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
+	echo json_encode( LP_Calc_Pricing::browser_config(), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES );
 	exit( 0 );
 }
 

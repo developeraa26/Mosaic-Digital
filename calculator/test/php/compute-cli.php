@@ -1,6 +1,7 @@
 <?php
 /**
- * Prices many selections with the real LP_Calc_Pricing, for the JS parity test.
+ * Prices many selections with the real LP_Calc_Pricing (a support and test helper; the page itself
+ * has no prices since 1.1.0).
  *
  * Input (a file path argument, or stdin): a JSON array of raw selections, each with the keys
  * that LP_Calc_Pricing::normalize() reads: business, business_other, transactions, vat_status,

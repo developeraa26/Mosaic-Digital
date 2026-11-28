@@ -1,30 +1,31 @@
 <?php
 /**
- * PHP side of the UI tests. Reads a JSON request on stdin.
+ * PHP side of the UI tests, with the plugin's real LP_Calc_Pricing. Reads a JSON request on stdin.
  *
- * {"mode":"combos"}            every price-relevant combination with the PHP lines and total
+ * {"mode":"prices"}            default_prices() and the transaction counts (for test/ui/amounts.js)
+ * {"mode":"package"}           every selection that changes the quote or the package list, with the
+ *                              server's quote line keys and its "Your package" lines (package_lines())
  * {"mode":"quote","fields":{}} what the plugin would add to the Elementor response (lp_quote)
- *
- * Uses the real LP_Calc_Pricing (default), or the spec oracle with LP_CALC_CONFIG=stub.
  */
 require_once __DIR__ . '/config-source.php';
-require_once __DIR__ . '/ref-pricing.php';
 
 $req    = json_decode( stream_get_contents( STDIN ), true );
 $config = lp_calc_ui_config();
-$real   = 'real' === $GLOBALS['lp_calc_ui_source'];
-$labels = array();
-foreach ( $config['services'] as $s ) {
-	$labels[ $s['key'] ] = $s['label'];
+
+if ( 'prices' === $req['mode'] ) {
+	echo json_encode(
+		array(
+			'prices'       => LP_Calc_Pricing::default_prices(),
+			'transactions' => LP_Calc_Pricing::TRANSACTIONS,
+			'currency'     => LP_Calc_Pricing::CURRENCY,
+		)
+	);
+	exit( 0 );
 }
 
-$compute = static function ( array $sel ) use ( $real, $config, $labels ) {
-	return $real ? LP_Calc_Pricing::compute( $sel ) : lp_calc_ui_ref_compute( $config['prices'], $labels, $sel );
-};
-
-if ( 'combos' === $req['mode'] ) {
-	$keys = array( 'accounting', 'reports', 'vat', 'ct', 'payroll', 'expense', 'invoicing', 'einvoicing', 'account_manager' );
-	$tx   = array( 1000, 2000, 3000, 4000, 5000, 10000, 20000, 30000, 40000, 50000 );
+if ( 'package' === $req['mode'] ) {
+	$keys = LP_Calc_Pricing::SERVICE_KEYS;
+	$tx   = LP_Calc_Pricing::TRANSACTIONS;
 	$out  = array();
 	for ( $mask = 1; $mask < 512; $mask++ ) {
 		$services = array();
@@ -40,7 +41,7 @@ if ( 'combos' === $req['mode'] ) {
 				foreach ( $emps as $emp ) {
 					foreach ( $reps as $rep ) {
 						foreach ( $tx as $t ) {
-							$sel = array(
+							$sel   = array(
 								'business'       => 'Retail',
 								'business_other' => '',
 								'services'       => $services,
@@ -50,13 +51,10 @@ if ( 'combos' === $req['mode'] ) {
 								'employees'      => $emp,
 								'reports'        => $rep,
 							);
-							$q     = $compute( $sel );
 							$out[] = array(
 								's' => $sel,
-								't' => $q['total'],
-								'l' => array_map( static function ( $l ) {
-									return array( $l['key'], $l['amount'], $l['detail'] );
-								}, $q['lines'] ),
+								'k' => array_column( LP_Calc_Pricing::compute( $sel )['lines'], 'key' ),
+								'p' => LP_Calc_Pricing::package_lines( $sel ),
 							);
 						}
 					}
@@ -64,7 +62,7 @@ if ( 'combos' === $req['mode'] ) {
 			}
 		}
 	}
-	echo json_encode( array( 'source' => $GLOBALS['lp_calc_ui_source'], 'combos' => $out ), JSON_UNESCAPED_UNICODE );
+	echo json_encode( array( 'combos' => $out ), JSON_UNESCAPED_UNICODE );
 	exit( 0 );
 }
 
@@ -80,48 +78,24 @@ if ( 'quote' === $req['mode'] ) {
 		'reports'        => isset( $f['lpc_reports'] ) ? $f['lpc_reports'] : '',
 		'services'       => isset( $f['lpc_services'] ) ? $f['lpc_services'] : '',
 	);
-	if ( $real ) {
-		$n      = LP_Calc_Pricing::normalize( $raw );
-		$sel    = $n['selection'];
-		$errors = $n['errors'];
-	} else {
-		$errors = array();
-		$sel    = array(
-			'services'     => array_values( array_filter( explode( ',', $raw['services'] ) ) ),
-			'transactions' => (int) $raw['transactions'],
-			'vat_status'   => $raw['vat_status'],
-			'ct_status'    => $raw['ct_status'],
-			'employees'    => $raw['employees'] ? $raw['employees'] : 'up_to_20',
-			'reports'      => $raw['reports'] ? (int) $raw['reports'] : 4,
-		);
-		if ( ! $sel['services'] ) {
-			$errors['services'] = 'Choose at least one service.';
-		}
-		if ( ! in_array( $sel['vat_status'], array( 'registered', 'not_registered' ), true ) || ! in_array( $sel['ct_status'], array( 'registered', 'not_registered' ), true ) ) {
-			$errors['status'] = 'Tell us your tax registration status.';
-		}
-		if ( '' === $raw['business'] ) {
-			$errors['business'] = 'Choose your business activity.';
-		}
-	}
+	$n      = LP_Calc_Pricing::normalize( $raw );
+	$sel    = $n['selection'];
+	$errors = $n['errors'];
 	if ( $errors ) {
 		echo json_encode( array( 'success' => false, 'errors' => $errors ) );
 		exit( 0 );
 	}
-	$q     = $compute( $sel );
-	$money = static function ( $n ) {
-		return 0 === (int) $n ? 'Included' : 'AED ' . number_format( (int) $n );
-	};
+	$q = LP_Calc_Pricing::compute( $sel );
 	echo json_encode(
 		array(
 			'success'   => true,
 			'selection' => $sel,
 			'lp_quote'  => array(
 				'ref'        => 'LPQ-261127-4F2A9',
-				'lines'      => array_map( static function ( $l ) use ( $money ) {
-					return array( 'label' => $l['label'], 'detail' => $l['detail'], 'amount' => $money( $l['amount'] ) );
+				'lines'      => array_map( static function ( $l ) {
+					return array( 'key' => $l['key'], 'label' => $l['label'], 'detail' => $l['detail'], 'amount' => LP_Calc_Pricing::line_amount_text( $l ) );
 				}, $q['lines'] ),
-				'total'      => 'AED ' . number_format( $q['total'] ),
+				'total'      => LP_Calc_Pricing::money( $q['total'] ),
 				'email'      => isset( $f['email'] ) ? $f['email'] : '',
 				'email_sent' => true,
 			),

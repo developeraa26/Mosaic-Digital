@@ -64,7 +64,7 @@
 	};
 
 	/* ------------------------------------------------------------------ */
-	/* Pure helpers (shared with the Node parity tests)                    */
+	/* Pure helpers (shared with the Node tests)                           */
 	/* ------------------------------------------------------------------ */
 
 	function fmtInt(n) {
@@ -247,18 +247,13 @@
 			back: qs(root, '[data-lp-calc-back]'),
 			next: qs(root, '[data-lp-calc-next]'),
 			actions: qs(root, '[data-lp-calc-actions]'),
-			totals: qsa(root, '[data-lp-calc-total]'),
-			totalStatic: qsa(root, '[data-lp-calc-total-static]'),
-			lines: qsa(root, '[data-lp-calc-lines]'),
+			pkg: qs(root, '[data-lp-calc-package]'),
 			slot: qs(root, '[data-lp-calc-form-slot]'),
 			contact: qs(root, '[data-lp-calc-contact]'),
 			result: qs(root, '[data-lp-calc-result]'),
 			missing: qs(root, '[data-lp-calc-missing]'),
 			editorNotice: qs(root, '[data-lp-calc-editor-notice]'),
 			editMode: qs(root, '[data-lp-calc-editmode]'),
-			barPanel: qs(root, '[data-lp-calc-bar-panel]'),
-			barToggle: qs(root, '[data-lp-calc-bar-toggle]'),
-			barRow: qs(root, '[data-lp-calc-bar-row]'),
 			mailto: qs(root, '[data-lp-calc-mailto]')
 		};
 		this.bind();
@@ -344,17 +339,6 @@
 				self.go(self.step - 1, true);
 			});
 		}
-		if (this.el.barToggle) {
-			this.el.barToggle.addEventListener('click', function (e) {
-				e.stopPropagation();
-				self.toggleBar();
-			});
-		}
-		if (this.el.barRow) {
-			this.el.barRow.addEventListener('click', function () {
-				self.toggleBar();
-			});
-		}
 		this.root.addEventListener('click', function (e) {
 			var again = closest(e.target, '[data-lp-calc-restart]');
 			if (again) {
@@ -376,22 +360,6 @@
 		this.sync();
 	};
 
-	Calculator.prototype.toggleBar = function (force) {
-		var panel = this.el.barPanel;
-		var btn = this.el.barToggle;
-		if (!panel || !btn) {
-			return;
-		}
-		var open = typeof force === 'boolean' ? force : panel.hidden;
-		panel.hidden = !open;
-		btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-		this.root.classList.toggle('is-bar-open', open);
-		var label = qs(btn, '[data-lp-calc-bar-toggle-text]');
-		if (label) {
-			label.textContent = open ? TEXT.hide : TEXT.breakdown;
-		}
-	};
-
 	/* ----- rendering ----- */
 
 	Calculator.prototype.sync = function () {
@@ -402,11 +370,10 @@
 		qsa(this.root, '[data-lp-calc-service]').forEach(function (card) {
 			card.classList.toggle('is-checked', s.services.indexOf(card.getAttribute('data-lp-calc-service')) !== -1);
 		});
-		var quote = compute(this.cfg, s);
-		this.quote = quote;
-		this.renderEstimate(quote);
+		var lines = packageLines(this.cfg, s);
+		this.renderPackage(lines);
 		this.writeHidden(s);
-		this.root.classList.toggle('has-selection', quote.lines.length > 0);
+		this.root.classList.toggle('has-selection', lines.length > 0);
 	};
 
 	Calculator.prototype.reveal = function (name, show) {
@@ -415,41 +382,34 @@
 		});
 	};
 
-	Calculator.prototype.renderEstimate = function (quote) {
-		var cfg = this.cfg;
-		var total = money(quote.total, cfg);
-		this.el.totals.forEach(function (el) {
-			if (el.textContent !== total) {
-				el.textContent = total;
-			}
-		});
-		this.el.totalStatic.forEach(function (el) {
-			el.textContent = total;
-		});
-		this.el.lines.forEach(function (ul) {
-			var kind = ul.getAttribute('data-lp-calc-lines');
-			var withDetail = kind !== 'rail';
+	/** Step 5 "Your package": the selected services with a short detail each, no amounts. */
+	Calculator.prototype.renderPackage = function (lines) {
+		var ul = this.el.pkg;
+		if (ul) {
 			ul.textContent = '';
-			if (!quote.lines.length) {
+			if (!lines.length) {
 				ul.appendChild(make('li', 'lp-calc__line lp-calc__line--empty', TEXT.noServices));
-				return;
 			}
-			quote.lines.forEach(function (line) {
-				ul.appendChild(lineItem(line.label, withDetail ? line.detail : '', amountText(line.amount, cfg)));
+			lines.forEach(function (line) {
+				ul.appendChild(lineItem(line.label, line.detail, null));
 			});
-		});
+		}
 		if (this.el.mailto) {
-			var body = quote.lines.map(function (l) {
-				return '- ' + l.label + ': ' + amountText(l.amount, cfg);
+			var body = lines.map(function (l) {
+				return '- ' + l.label + ': ' + l.detail;
 			}).join('\n');
 			this.el.mailto.href = 'mailto:info@ledgerplus.ae?subject=' + encodeURIComponent('Package quotation request') +
-				'&body=' + encodeURIComponent('Hello Ledger Plus,\n\nPlease send me a quotation for:\n' + body + '\n\nEstimated annual total: ' + total + '\n');
+				'&body=' + encodeURIComponent('Hello Ledger Plus,\n\nPlease send me a quotation for:\n' + body + '\n');
 		}
 	};
 
+	/**
+	 * A line of a list: label, detail and, on the result screen only, the server's amount. A detail
+	 * that only repeats the amount ("Included") is left out, as in LP_Calc_Quote_PDF::detail().
+	 */
 	function lineItem(label, detail, amount) {
-		// Same rule as LP_Calc_Quote_PDF::detail(): no detail that only repeats the amount ("Included").
-		if (detail && String(detail).toLowerCase() === String(amount).toLowerCase()) {
+		var hasAmount = amount !== null && amount !== undefined;
+		if (hasAmount && detail && String(detail).toLowerCase() === String(amount).toLowerCase()) {
 			detail = '';
 		}
 		var li = make('li', 'lp-calc__line');
@@ -459,7 +419,9 @@
 			text.appendChild(make('span', 'lp-calc__line-detail', detail));
 		}
 		li.appendChild(text);
-		li.appendChild(make('span', 'lp-calc__line-amount', amount));
+		if (hasAmount) {
+			li.appendChild(make('span', 'lp-calc__line-amount', amount));
+		}
 		return li;
 	}
 
@@ -480,6 +442,7 @@
 		};
 	};
 
+	/** Writes the selection into the hidden lpc_* fields and empties the figure fields. */
 	Calculator.prototype.writeHidden = function (s) {
 		if (!this.form) {
 			return;
@@ -490,6 +453,12 @@
 			var input = form.querySelector('[name="form_fields[' + key + ']"]');
 			if (input && input.value !== values[key]) {
 				input.value = values[key];
+			}
+		});
+		FIGURE_KEYS.forEach(function (key) {
+			var input = form.querySelector('[name="form_fields[' + key + ']"]');
+			if (input && input.value !== '') {
+				input.value = '';
 			}
 		});
 	};
@@ -644,22 +613,13 @@
 		}
 	};
 
-	/** Height of the sticky estimate bar when it is showing (850px and narrower). */
-	Calculator.prototype.barHeight = function () {
-		var bar = qs(this.root, '[data-lp-calc-bar]');
-		if (!bar || win.getComputedStyle(bar).display === 'none') {
-			return 0;
-		}
-		return bar.getBoundingClientRect().height;
-	};
-
 	/**
 	 * Scrolls so the top of a field (its legend or label, and the message under it) is in view,
-	 * below a sticky site header and above the sticky estimate bar.
+	 * below a sticky site header.
 	 */
 	Calculator.prototype.scrollToField = function (el) {
 		var top = headerOffset() + 16;
-		var bottom = win.innerHeight - this.barHeight() - 16;
+		var bottom = win.innerHeight - 16;
 		var rect = el.getBoundingClientRect();
 		if (rect.top >= top && rect.top + Math.min(rect.height, 140) <= bottom) {
 			return;
@@ -866,7 +826,7 @@
 
 	/**
 	 * After Elementor rendered a failed response: put field errors where they can be read and
-	 * bring the first one (or the form message) into view, clear of the sticky estimate bar.
+	 * bring the first one (or the form message) into view.
 	 */
 	Calculator.prototype.onServerError = function () {
 		var form = this.form;
@@ -1073,6 +1033,12 @@
 		this.showResult(quote);
 	};
 
+	/**
+	 * The result screen. The price shows here for the first time, from the server's lp_quote. Without
+	 * server lines (an unexpected server path) it shows no figures: only the wording and the package.
+	 *
+	 * @param {Object|null} quote lp_quote: {ref, lines: [{key, label, detail, amount}], total, email, email_sent}.
+	 */
 	Calculator.prototype.showResult = function (quote) {
 		var cfg = this.cfg;
 		var pending = this.pending || {};
@@ -1123,34 +1089,28 @@
 		}
 		box.appendChild(lead);
 
-		// The server's lines and total; the local estimate only if the server sent none.
-		var lines;
-		var total;
-		var heading;
-		if (quote && quote.lines && quote.lines.length) {
-			lines = quote.lines.map(function (l) {
-				return { label: l.label, detail: l.detail, amount: String(l.amount) };
-			});
-			total = String(quote.total || '');
-			heading = TEXT.yourQuote + (ref ? ' ' + ref : '');
-		} else {
-			lines = (this.quote || compute(cfg, this.state())).lines.map(function (l) {
-				return { label: l.label, detail: l.detail, amount: amountText(l.amount, cfg) };
-			});
-			total = money((this.quote || compute(cfg, this.state())).total, cfg);
-			heading = TEXT.yourEstimate;
-		}
 		var summary = make('div', 'lp-calc__summary lp-calc__summary--result');
-		summary.appendChild(make('p', 'lp-calc__summary-title', heading));
-		var ul = make('ul', 'lp-calc__lines lp-calc__lines--summary');
-		lines.forEach(function (l) {
-			ul.appendChild(lineItem(l.label, l.detail, l.amount));
-		});
+		var ul;
+		if (quote && quote.lines && quote.lines.length) {
+			// The server's figures: the total first, then the lines.
+			summary.appendChild(make('p', 'lp-calc__summary-title', TEXT.yourQuote + (ref ? ' ' + ref : '')));
+			var totalRow = make('div', 'lp-calc__summary-total lp-calc__summary-total--strong');
+			totalRow.appendChild(make('span', 'lp-calc__summary-total-label', cfg.total_label || 'Estimated annual total (incl. 5% VAT)'));
+			totalRow.appendChild(make('strong', 'lp-calc__summary-total-amount', String(quote.total || '')));
+			summary.appendChild(totalRow);
+			ul = make('ul', 'lp-calc__lines lp-calc__lines--summary');
+			quote.lines.forEach(function (l) {
+				ul.appendChild(lineItem(String(l.label), l.detail ? String(l.detail) : '', String(l.amount)));
+			});
+		} else {
+			// No server figures: the selection only, never a price worked out in the browser.
+			summary.appendChild(make('p', 'lp-calc__summary-title', TEXT.yourPackage));
+			ul = make('ul', 'lp-calc__lines lp-calc__lines--package');
+			packageLines(cfg, this.state()).forEach(function (l) {
+				ul.appendChild(lineItem(l.label, l.detail, null));
+			});
+		}
 		summary.appendChild(ul);
-		var totalRow = make('div', 'lp-calc__summary-total lp-calc__summary-total--strong');
-		totalRow.appendChild(make('span', '', cfg.total_label || 'Estimated annual total (incl. ' + (cfg.vat_rate || 5) + '% VAT)'));
-		totalRow.appendChild(make('strong', '', total));
-		summary.appendChild(totalRow);
 		box.appendChild(summary);
 
 		var nextBox = make('div', 'lp-calc__next');
@@ -1168,7 +1128,6 @@
 		}
 		box.hidden = false;
 		this.root.classList.add('is-complete');
-		this.toggleBar(false);
 		if (this.el.count) {
 			this.el.count.textContent = quote && quote.email_sent !== false ? TEXT.done : TEXT.received;
 		}
@@ -1275,8 +1234,7 @@
 	}
 
 	return {
-		compute: compute,
-		money: money,
+		packageLines: packageLines,
 		fmtInt: fmtInt,
 		boot: boot,
 		init: init,
